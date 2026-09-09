@@ -1,0 +1,3443 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>MemoChat</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
+    
+    :root {
+      --bg-primary: #313338;
+      --bg-secondary: #2b2d31;
+      --bg-tertiary: #1e1f22;
+      --bg-accent: #232428;
+      --text-main: #dbdee1;
+      --text-muted: #949ba4;
+      --border-color: #383a40;
+      --msg-bg: #383a40;
+      --accent-color: #5865f2;
+      --custom-wallpaper: none;
+    }
+
+    body.light-theme {
+      --bg-primary: #e3e5e8;
+      --bg-secondary: #f2f3f5;
+      --bg-tertiary: #ffffff;
+      --bg-accent: #ebedef;
+      --text-main: #2e3338;
+      --text-muted: #666d75;
+      --border-color: #d1d5db;
+      --msg-bg: #ffffff;
+    }
+
+    body { background-color: var(--bg-primary); background-image: var(--custom-wallpaper); background-size: cover; background-position: center; color: var(--text-main); display: flex; height: 100vh; overflow: hidden; flex-direction: column; position: relative; }
+    
+    .app-container { display: flex; flex: 1; height: 100vh; overflow: hidden; position: relative; z-index: 10; }
+
+    /* Dinamik Hava Durumu Efekt Katmanları */
+    .weather-effect-layer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; overflow: hidden; display: none; }
+    
+    .raindrop {
+      position: absolute; background: linear-gradient(transparent, rgba(135, 206, 250, 0.6)); width: 1px; height: 20px; opacity: 0.7; animation: fallRain linear infinite;
+    }
+    @keyframes fallRain {
+      0% { transform: translateY(-30px); opacity: 0; }
+      50% { opacity: 0.7; }
+      100% { transform: translateY(105vh); opacity: 0; }
+    }
+
+    .snowflake {
+      position: absolute; background: #fff; border-radius: 50%; opacity: 0.8; animation: fallSnow linear infinite;
+    }
+    @keyframes fallSnow {
+      0% { transform: translateY(-10px) translateX(0); opacity: 0; }
+      50% { opacity: 0.9; }
+      100% { transform: translateY(105vh) translateX(20px); opacity: 0; }
+    }
+
+    .server-sidebar {
+      width: 72px; background-color: var(--bg-tertiary); display: flex; flex-direction: column; align-items: center; padding-top: 12px; gap: 8px; border-right: 1px solid var(--border-color); z-index: 100;
+    }
+    .server-icon {
+      width: 48px; height: 48px; border-radius: 50%; background: var(--bg-primary); display: flex; align-items: center; justify-content: center; color: var(--text-main); font-weight: bold; cursor: pointer; position: relative; transition: all 0.15s ease; overflow: hidden; border: 2px solid transparent;
+    }
+    .server-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .server-icon:hover { border-radius: 16px; background: var(--accent-color); color: #fff; }
+    .server-icon.active { border-radius: 16px; background: var(--accent-color); color: #fff; border-color: #fff; }
+    
+    .server-icon.add-btn { background: var(--bg-secondary); color: #23a55a; font-size: 24px; }
+    .server-icon.add-btn:hover { background: #23a55a; color: #fff; border-radius: 16px; }
+
+    .server-separator { width: 32px; height: 2px; background: var(--border-color); border-radius: 1px; margin: 4px 0; }
+
+    .channel-category-sidebar {
+      width: 240px; background-color: var(--bg-secondary); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; overflow-y: auto;
+    }
+    .category-header { font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 6px 4px; margin-top: 8px; }
+    .category-header:hover { color: var(--text-main); }
+    .category-channels { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+    
+    .channel-item-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; color: var(--text-muted); font-weight: 500; }
+    .channel-item-row:hover { background: var(--border-color); color: var(--text-main); }
+    .channel-item-row.active { background: var(--border-color); color: var(--text-main); font-weight: bold; }
+    .sub-channel-row { padding-left: 22px !important; font-size: 12px !important; }
+
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; z-index: 999999;
+    }
+    .modal-card {
+      background: var(--bg-secondary); color: var(--text-main); padding: 25px; border-radius: 8px; width: 420px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6); text-align: center; position: relative; z-index: 1000000;
+      max-height: 90vh; overflow-y: auto;
+    }
+    .modal-card h2 { color: var(--text-main); margin-bottom: 15px; font-size: 18px; }
+    .auth-field { text-align: left; margin-bottom: 10px; }
+    .auth-field label { font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 3px; }
+    
+    .auth-field input, .auth-field select, .auth-field textarea {
+      width: 100%; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 9px;
+      border-radius: 4px; color: var(--text-main); font-size: 13px; outline: none;
+    }
+    .auth-field input:focus, .auth-field select:focus, .auth-field textarea:focus { border-color: var(--accent-color); }
+
+    .auth-btn {
+      width: 100%; background: var(--accent-color); color: #fff; border: none; padding: 10px;
+      border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px; margin-top: 5px;
+    }
+    .auth-btn:hover { opacity: 0.9; }
+    .auth-switch { margin-top: 12px; font-size: 13px; color: var(--text-muted); }
+    .auth-switch span { color: #00a8fc; cursor: pointer; font-weight: bold; }
+    .error-msg { color: #fa777c; font-size: 12px; margin-top: 8px; display: none; }
+
+    .modal-close-btn {
+      position: absolute; top: 12px; right: 12px; background: transparent; border: none;
+      color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px 8px; border-radius: 4px; z-index: 1000001;
+    }
+    .modal-close-btn:hover { background: var(--border-color); color: var(--text-main); }
+
+    .profile-popover {
+      position: fixed; background: #111214; border-radius: 10px; width: 320px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.7); z-index: 1000005; display: none; overflow: hidden; border: 1px solid #222; color: #dbdee1;
+    }
+    .profile-banner { height: 110px; background-size: cover; background-position: center; background-color: var(--accent-color); position: relative; }
+    .profile-avatar-container { position: absolute; bottom: -30px; left: 16px; width: 70px; height: 70px; border-radius: 50%; border: 6px solid #111214; background: var(--accent-color); overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #fff; }
+    .profile-body { padding: 40px 16px 16px 16px; background: #2b2d31; }
+    .profile-name { font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 2px; }
+    .profile-role-tag { font-size: 11px; background: var(--accent-color); color: #fff; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 10px; }
+    .profile-divider { height: 1px; background: #383a40; margin: 10px 0; }
+    .profile-section-title { font-size: 11px; text-transform: uppercase; color: #949ba4; font-weight: bold; margin-bottom: 4px; }
+    .profile-status-text { font-size: 13px; color: #dbdee1; word-break: break-word; margin-bottom: 8px; }
+    .profile-extra-info { font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 3px; }
+
+    .status-badge-wrapper { position: relative; display: inline-block; }
+    .status-dot {
+      position: absolute; bottom: 0; right: 0; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--bg-secondary);
+    }
+    .status-online { background: #23a55a; }
+    .status-idle { background: #f0b232; }
+    .status-dnd { background: #da373c; }
+    .status-offline { background: #80848e; }
+
+    .settings-modal-card { width: 720px !important; display: flex !important; padding: 0 !important; text-align: left !important; overflow: hidden !important; }
+    .settings-sidebar { width: 220px; background: var(--bg-secondary); padding: 20px 10px; border-right: 1px solid var(--bg-tertiary); display: flex; flex-direction: column; gap: 5px; }
+    .settings-tab-btn { background: transparent; border: none; color: var(--text-muted); padding: 10px 12px; border-radius: 4px; text-align: left; font-weight: bold; font-size: 13px; cursor: pointer; }
+    .settings-tab-btn:hover { background: var(--border-color); color: var(--text-main); }
+    .settings-tab-btn.active { background: var(--border-color); color: var(--text-main); }
+    .settings-content-area { flex: 1; background: var(--bg-primary); padding: 25px; overflow-y: auto; max-height: 480px; position: relative; }
+    .settings-pane { display: none; }
+    .settings-pane.active { display: block; }
+
+    .world-row { display: flex; align-items: center; justify-content: space-between; background: var(--bg-tertiary); padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; }
+    .world-row-info { display: flex; flex-direction: column; gap: 2px; }
+    .world-row-title { font-weight: bold; color: var(--text-main); }
+    .world-row-sub { font-size: 11px; color: var(--text-muted); }
+    .world-row-actions { display: flex; gap: 6px; }
+
+    .admin-dashboard-card { width: 580px; text-align: left; }
+    .dashboard-section { margin-bottom: 15px; background: var(--bg-tertiary); padding: 12px; border-radius: 6px; }
+    .dashboard-section h3 { font-size: 12px; text-transform: uppercase; color: #f0b232; margin-bottom: 8px; font-weight: bold; }
+    .dash-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 6px 8px; background: var(--bg-secondary); border-radius: 4px; margin-bottom: 5px; }
+    .approve-btn { background: #23a55a; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
+    .ban-btn { background: #da373c; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
+    .unban-btn { background: #23a55a; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
+    .role-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+    .role-sahip { background: #f0b232; color: #000; }
+    .role-mod { background: #23a55a; color: #fff; }
+    .role-vip { background: var(--accent-color); color: #fff; }
+    .role-uye { background: #4e5058; color: #fff; }
+
+    .context-menu {
+      position: fixed; background: #111214; border-radius: 4px; padding: 6px; width: 210px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.5); z-index: 99999; display: none; border: 1px solid #222;
+    }
+    .context-menu-item {
+      padding: 8px 10px; font-size: 13px; color: #b5bac1; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+    }
+    .context-menu-item:hover { background: var(--accent-color); color: #fff; }
+    .context-menu-item.danger:hover { background: #da373c; color: #fff; }
+
+    .attachment-menu {
+      position: absolute; bottom: 65px; left: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color);
+      border-radius: 8px; width: 200px; box-shadow: 0 8px 20px rgba(0,0,0,0.5); z-index: 9999; display: none; flex-direction: column; padding: 6px; gap: 4px;
+    }
+    .attachment-menu-item {
+      padding: 10px 12px; font-size: 13px; color: var(--text-main); border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 500;
+    }
+    .attachment-menu-item:hover { background: var(--accent-color); color: #fff; }
+
+    .sidebar { width: 260px; background-color: var(--bg-secondary); padding: 15px; display: flex; flex-direction: column; justify-content: space-between; border-right: 1px solid var(--border-color); }
+    .user-info-bar { background: var(--bg-tertiary); padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: bold; }
+    .user-avatar-small { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; background: var(--accent-color); display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; flex-shrink: 0; }
+    .user-avatar-msg { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: var(--accent-color); flex-shrink: 0; }
+    
+    .account-settings-btn { background: #4e5058; color: #fff; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; margin-left: auto; }
+    .account-settings-btn:hover { background: #6d6f78; }
+
+    .channel-search-box { margin-bottom: 10px; display: flex; gap: 5px; }
+    .channel-search-input { flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 6px 8px; border-radius: 4px; color: var(--text-main); font-size: 12px; outline: none; }
+    .channel-search-input:focus { border-color: var(--accent-color); }
+    .channel-search-btn { background: var(--accent-color); color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+
+    .friends-section { margin-top: 5px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .friends-header { font-size: 11px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .friends-list { max-height: 90px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .friend-btn { background: var(--bg-tertiary); color: var(--text-main); border: none; width: 100%; padding: 6px 8px; border-radius: 4px; text-align: left; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .friend-btn:hover, .friend-btn.active { background: var(--border-color); color: var(--text-main); }
+    .friend-requests-box { font-size: 11px; color: #f0b232; margin-top: 5px; background: var(--bg-tertiary); padding: 6px; border-radius: 4px; max-height: 70px; overflow-y: auto; }
+
+    .room-users-section { margin-top: 10px; max-height: 120px; overflow-y: auto; }
+    .room-users-section h4 { font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; font-weight: bold; display: flex; flex-direction: column; gap: 2px; }
+    .user-list-item { display: flex; align-items: center; gap: 8px; background: var(--bg-tertiary); padding: 5px 8px; border-radius: 4px; margin-bottom: 4px; font-size: 13px; cursor: pointer; }
+    .user-list-item:hover { background: var(--border-color); }
+    .user-list-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .speaking-avatar { box-shadow: 0 0 0 3px #23a55a !important; }
+    .mic-muted-badge { font-size: 10px; background: #da373c; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: bold; margin-left: auto; }
+
+    .soundboard-panel { background: var(--bg-tertiary); padding: 8px; border-radius: 6px; margin-top: 8px; display: none; flex-direction: column; gap: 5px; }
+    .soundboard-title { font-size: 10px; text-transform: uppercase; font-weight: bold; color: var(--text-muted); }
+    .soundboard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .sound-btn { background: var(--border-color); color: var(--text-main); border: none; padding: 5px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; text-align: center; }
+    .sound-btn:hover { background: var(--accent-color); color: #fff; }
+
+    .controls { background: var(--bg-accent); padding: 8px; border-radius: 8px; display: none; flex-direction: column; gap: 6px; margin-top: 5px; }
+    .btn { background: #4e5058; color: white; border: none; padding: 7px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; text-align: center; }
+    .btn-danger { background: #da373c; }
+    .btn-success { background: #23a55a; }
+    .btn-warning { background: #f0b232; color: #000; font-weight: bold; }
+    .btn:hover { opacity: 0.8; }
+
+    .main-content { flex: 1; padding: 15px; display: flex; align-items: center; justify-content: center; position: relative; background: transparent; flex-direction: column; }
+    .empty-screen-state { color: var(--text-muted); font-size: 16px; font-weight: 500; text-align: center; }
+
+    .video-stage {
+      position: relative; width: 100%; height: 100%; display: none; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; padding: 10px; background: rgba(30, 31, 34, 0.85); border-radius: 8px; overflow-y: auto; align-content: center; justify-items: center; backdrop-filter: blur(5px);
+    }
+    .video-box {
+      position: relative; width: 100%; height: 100%; min-height: 240px; background: #000; border-radius: 8px; overflow: hidden; border: 2px solid var(--border-color); display: flex; justify-content: center; align-items: center; cursor: pointer; transition: transform 0.15s;
+    }
+    .video-box.spotlight {
+      grid-column: 1 / -1 !important;
+      grid-row: 1 / -1 !important;
+      min-height: 100% !important;
+      z-index: 50;
+    }
+    .video-box video, .video-box iframe { width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); }
+    .video-label { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; z-index: 10; color: #fff; display: flex; align-items: center; gap: 8px; }
+    .video-volume-slider { width: 70px; height: 5px; accent-color: var(--accent-color); cursor: pointer; }
+
+    .chat-sidebar { width: 320px; background-color: var(--bg-secondary); display: flex; flex-direction: column; border-left: 1px solid var(--border-color); }
+    .chat-header { padding: 15px; background: var(--bg-accent); font-weight: bold; font-size: 14px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    
+    .message-item { background: var(--msg-bg); padding: 8px 12px; border-radius: 6px; font-size: 13px; word-break: break-word; display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border-color); }
+    .message-item.mentioned { background: rgba(88, 101, 242, 0.18); border-left: 4px solid var(--accent-color); }
+    .message-content { flex: 1; }
+    .message-item .author { font-weight: bold; color: var(--accent-color); font-size: 11px; margin-bottom: 3px; cursor: pointer; }
+    .message-item .author:hover { text-decoration: underline; }
+    .system-message { text-align: center; color: var(--text-muted); font-style: italic; font-size: 12px; background: transparent; padding: 4px; display: block; border: none; }
+    
+    .poll-box { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; margin-top: 6px; }
+    .poll-title { font-weight: bold; font-size: 13px; margin-bottom: 8px; color: var(--text-main); }
+    .poll-option { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 6px 10px; border-radius: 4px; margin-bottom: 4px; cursor: pointer; font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .poll-option:hover { background: var(--border-color); }
+
+    .chat-media-img { max-width: 100%; max-height: 200px; border-radius: 6px; margin-top: 5px; cursor: pointer; }
+    .chat-media-video { max-width: 100%; border-radius: 6px; margin-top: 5px; cursor: pointer; }
+    .chat-file-link { display: inline-block; margin-top: 5px; color: #00a8fc; text-decoration: none; font-weight: bold; background: var(--bg-secondary); padding: 6px 10px; border-radius: 4px; }
+
+    .chat-input-area { padding: 10px; background: var(--bg-accent); display: flex; gap: 5px; align-items: center; border-top: 1px solid var(--border-color); position: relative; }
+    .chat-input-area input[type="text"] { flex: 1; background: var(--msg-bg); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; color: var(--text-main); outline: none; font-size: 13px; }
+    .file-btn-label { background: #4e5058; color: #fff; padding: 8px 10px; border-radius: 4px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+    .send-btn { background: var(--accent-color); color: #fff; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+    .celebration-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 9999999; overflow: hidden; display: none; align-items: center; justify-content: center;
+    }
+    .glowing-heart {
+      font-size: 160px;
+      animation: heartPulse 1.2s infinite ease-in-out;
+      filter: drop-shadow(0 0 35px #eb459e) drop-shadow(0 0 70px #ff6b81);
+    }
+    .celebration-text {
+      margin-top: 25px;
+      font-size: 32px;
+      font-weight: bold;
+      color: #fff;
+      text-align: center;
+      text-shadow: 0 0 20px #eb459e, 0 0 40px #ff6b81;
+      font-family: 'Segoe UI', sans-serif;
+      animation: textPulse 1.2s infinite ease-in-out;
+      letter-spacing: 1px;
+    }
+    @keyframes heartPulse {
+      0% { transform: scale(0.8); opacity: 0.8; }
+      50% { transform: scale(1.25); opacity: 1; filter: drop-shadow(0 0 40px #ff4757) drop-shadow(0 0 80px #ff6b81); }
+      100% { transform: scale(0.8); opacity: 0.8; }
+    }
+    @keyframes textPulse {
+      0% { transform: scale(0.95); opacity: 0.85; }
+      50% { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.85; }
+    }
+    .confetti-piece {
+      position: absolute; width: 10px; height: 16px; background: #f00; top: -20px; opacity: 0.9; animation: fallConfetti 3s linear forwards;
+    }
+    @keyframes fallConfetti {
+      0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(105vh) rotate(720deg); opacity: 0; }
+    }
+
+    .poke-popup {
+      position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #eb459e, #ff6b81); color: #fff;
+      padding: 15px 22px; border-radius: 12px; box-shadow: 0 8px 25px rgba(235, 69, 158, 0.5); z-index: 10000000;
+      display: none; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; text-align: center; font-family: 'Segoe UI', sans-serif;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.5) translateY(-20px); opacity: 0; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Dinamik Hava Durumu / Atmosfer Efekt Katmanı -->
+  <div class="weather-effect-layer" id="weatherEffectLayer"></div>
+
+  <iframe id="airhornAudioFrame" width="0" height="0" src="https://www.youtube.com/embed/NlVmFilRe3w?enablejsapi=1" style="display:none;" allow="autoplay"></iframe>
+  <div id="hiddenMusicPlayerContainer" style="display:none;"></div>
+
+  <div class="celebration-overlay" id="celebrationOverlay">
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+      <div class="glowing-heart">💖</div>
+      <div class="celebration-text">İyi ki doğdun bitanecik karım DERYAM</div>
+    </div>
+  </div>
+
+  <div class="poke-popup" id="pokePopup">
+    <div style="font-size: 24px;" id="pokePopupIcon">💖</div>
+    <div style="font-size: 14px; font-weight: bold; margin-top: 4px;" id="pokePopupSender">Kullanıcı</div>
+    <div style="font-size: 16px; margin-top: 2px;" id="pokePopupText">Seni çok seviyorum!</div>
+  </div>
+
+  <div class="modal-overlay" id="pokeModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 360px; text-align: center;">
+      <button class="modal-close-btn" onclick="document.getElementById('pokeModalOverlay').style.display = 'none'">&#10005;</button>
+      <h2 style="font-size: 18px; margin-bottom: 12px;">💌 Sürpriz Bildirim Gönder</h2>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;">Kanaldakilere sevimli bir sürpriz gönder:</p>
+      
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="auth-btn" style="background: #eb459e; padding: 12px; font-size: 13px;" onclick="sendPokeMessage('💖', 'Seni çok seviyorum!')">💖 Seni çok seviyorum!</button>
+        <button class="auth-btn" style="background: #ff6b81; padding: 12px; font-size: 13px;" onclick="sendPokeMessage('🥰', 'Seni çok özledim!')">🥰 Seni çok özledim!</button>
+        <button class="auth-btn" style="background: #5865f2; padding: 12px; font-size: 13px;" onclick="sendPokeMessage('✨', 'Seni düşünüyorum...')">✨ Seni düşünüyorum...</button>
+        <button class="auth-btn" style="background: #23a55a; padding: 12px; font-size: 13px;" onclick="sendPokeMessage('♾️', 'İyi ki varsın sevgilim!')">♾️ İyi ki varsın sevgilim!</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="banDurationModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 360px; text-align: left;">
+      <button class="modal-close-btn" onclick="document.getElementById('banDurationModalOverlay').style.display = 'none'">&#10005;</button>
+      <h2 style="font-size: 16px; margin-bottom: 10px;">🔨 Kullanıcıyı Banla</h2>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;" id="banTargetUserLabel">Kullanıcı için ban süresi seçin:</p>
+      <input type="hidden" id="targetBanUsername">
+
+      <div class="auth-field">
+        <label>Ban Süresi</label>
+        <select id="banDurationSelect">
+          <option value="1day">1 Gün</option>
+          <option value="1week">1 Hafta</option>
+          <option value="1month">1 Ay</option>
+          <option value="permanent">Kalıcı (Süresiz)</option>
+        </select>
+      </div>
+
+      <button class="auth-btn" style="margin-top: 15px; background: #da373c;" onclick="submitBanAction()">Banı Uygula</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="wpPollModalOverlay" style="display: none; z-index: 10000000 !important;">
+    <div class="modal-card" style="width: 360px; text-align: center; z-index: 10000001 !important;">
+      <h2 style="font-size: 16px; margin-bottom: 10px;">📊 Video Değiştirme / Kapatma Anketi</h2>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;" id="wpPollDesc">Bir kullanıcı videoyu kapatmak/değiştirmek istiyor:</p>
+      <div style="display: flex; gap: 10px; justify-content: center;">
+        <button class="auth-btn" style="background: #da373c;" onclick="submitWpPollVote('close')">Kapat / Değiştir</button>
+        <button class="auth-btn" style="background: #23a55a;" onclick="submitWpPollVote('continue')">Devam Et</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="pollModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 400px; text-align: left;">
+      <button class="modal-close-btn" onclick="document.getElementById('pollModalOverlay').style.display = 'none'">&#10005;</button>
+      <h2 style="font-size: 18px; margin-bottom: 10px;">📊 Anket Oluştur</h2>
+      
+      <div class="auth-field" id="pollQuestionStep">
+        <label>1. Anket Sorusu</label>
+        <input type="text" id="pollQuestionInput" placeholder="Örn: Akşam ne yiyelim?">
+        <button class="auth-btn" style="margin-top: 15px; background: #23a55a;" onclick="proceedToPollOptions()">İlerle (Seçenekleri Ekle)</button>
+      </div>
+
+      <div class="auth-field" id="pollOptionsStep" style="display: none;">
+        <label>2. Anket Seçenekleri (Her satıra bir seçenek yazın)</label>
+        <textarea id="pollOptionsTextarea" rows="4" placeholder="Seçenek 1&#10;Seçenek 2&#10;Seçenek 3"></textarea>
+        <div style="display: flex; gap: 8px; margin-top: 15px;">
+          <button class="auth-btn" style="background: #4e5058;" onclick="backToPollQuestion()">Geri</button>
+          <button class="auth-btn" style="background: #23a55a;" onclick="submitNewPoll()">Anketi Gönder</button>
+        </div>
+      </div>
+      <div class="error-msg" id="pollModalErr" style="display:block; margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="createSubChannelModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 380px; text-align: left;">
+      <button class="modal-close-btn" onclick="document.getElementById('createSubChannelModalOverlay').style.display = 'none'">&#10005;</button>
+      <h2 style="font-size: 16px; margin-bottom: 10px;">➕ Alt Kanal Ekle</h2>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;" id="subChannelParentTitle">Ana Kanala alt kanal ekleyin:</p>
+      <input type="hidden" id="parentChannelNameInput">
+
+      <div class="auth-field">
+        <label>Alt Kanal Türü</label>
+        <select id="subChannelTypeSelect">
+          <option value="Ses Kanalı">🔊 Ses ve Görüntü Kanalı</option>
+          <option value="Metin Kanalı">💬 Metin / Sohbet Kanalı</option>
+        </select>
+      </div>
+
+      <div class="auth-field" style="margin-top: 10px;">
+        <label>Alt Kanal Adı</label>
+        <input type="text" id="subChannelNameInput" placeholder="Örn: genel-sohbet veya oyun">
+      </div>
+
+      <div class="auth-field" style="margin-top: 10px;">
+        <label>Maksimum Kişi Kapasitesi</label>
+        <input type="number" id="subChannelCapacityInput" value="5" min="1" max="100">
+      </div>
+
+      <button class="auth-btn" style="margin-top: 15px; background: #23a55a;" onclick="submitSubChannelCreation()">Alt Kanalı Oluştur</button>
+      <div class="error-msg" id="subChannelErr" style="display:block; margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="watchPartyModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 750px; max-height: 90vh; text-align: left;">
+      <button class="modal-close-btn" onclick="closeWatchPartyModal()">&#10005;</button>
+      <h2 style="font-size: 18px; margin-bottom: 10px;">🎬 Ortak Film ve Video İzleme Odası</h2>
+      
+      <div class="auth-field" style="margin-bottom: 10px;">
+        <label>Video / Film Bağlantısı (YouTube URL veya Direkt .mp4 Linki)</label>
+        <div style="display: flex; gap: 6px;">
+          <input type="text" id="watchPartyUrlInput" placeholder="https://www.youtube.com/watch?v=..." style="flex:1;">
+          <button class="auth-btn" style="width: auto; padding: 0 15px; background: #23a55a;" onclick="loadWatchPartyMedia()">Yükle</button>
+        </div>
+      </div>
+
+      <div style="position: relative; width: 100%; height: 380px; background: #000; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center;" id="watchPartyContainer">
+        <span style="color: var(--text-muted); font-size: 13px;">Henüz bir video yüklenmedi.</span>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+        <span style="font-size: 12px; color: var(--text-muted);" id="watchPartyStatusText">Durum: Bekliyor</span>
+        <div style="display: flex; gap: 6px;">
+          <button class="auth-btn" style="width: auto; background: #da373c; padding: 6px 12px;" onclick="requestCloseWatchParty()">Videoyu Değiştir / Kapat</button>
+          <button class="auth-btn" style="width: auto; background: #4e5058; padding: 6px 12px;" onclick="closeWatchPartyModal()">Kapat</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-popover" id="userProfilePopover">
+    <div class="profile-banner" id="popoverBanner"></div>
+    <div class="profile-avatar-container" id="popoverAvatar">👤</div>
+    <div class="profile-body">
+      <div class="profile-name" id="popoverUsername">Kullanıcı</div>
+      <span class="profile-role-tag" id="popoverRole">Üye</span>
+      <div class="profile-divider"></div>
+      <div class="profile-section-title">Hakkımda / Durum</div>
+      <div class="profile-status-text" id="popoverStatus">Durum mesajı bulunmuyor.</div>
+      <div class="profile-extra-info">
+        <span id="popoverBirthday">🎂 Doğum Günü: Belirtilmemiş</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="context-menu" id="channelContextMenu">
+    <div class="context-menu-item" onclick="openSubChannelModalFromMenu()">➕ Alt Kanal Ekle</div>
+    <div class="context-menu-item" onclick="openVolumeModal()">🔊 Kanal Ses Düzeyi</div>
+    <div class="context-menu-item" onclick="copyInviteLink()">🔗 Davet Linkini Kopyala</div>
+    <div class="context-menu-item" id="contextMenuSettingsItem" onclick="openChannelSettingsModal()">⚙️ Kanal Ayarları</div>
+    <div class="context-menu-item danger" id="contextMenuDeleteChannelItem" onclick="deleteChannelFromContextMenu()" style="display: none;">🗑️ Dünyayı/Kanalı Sil</div>
+    <div class="context-menu-item" onclick="leaveCurrentChannel()">🚪 Kanaldan Ayrıl</div>
+  </div>
+
+  <div class="modal-overlay" id="lightboxModalOverlay" style="display: none; background: rgba(0,0,0,0.92); z-index: 1000005;" onclick="closeLightbox()">
+    <button class="modal-close-btn" style="top: 20px; right: 25px; font-size: 24px;" onclick="closeLightbox()">&#10005;</button>
+    <div id="lightboxContainer" style="max-width: 90vw; max-height: 90vh; display: flex; align-items: center; justify-content: center;" onclick="event.stopPropagation()"></div>
+  </div>
+
+  <div class="modal-overlay" id="mediaArchiveModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 650px; max-height: 80vh; text-align: left;">
+      <button class="modal-close-btn" onclick="document.getElementById('mediaArchiveModalOverlay').style.display = 'none'">&#10005;</button>
+      <h2 style="font-size: 16px; margin-bottom: 15px;">📁 Kanal Medya ve Dosya Arşivi</h2>
+      <div id="mediaArchiveGridContainer" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-height: 50vh; overflow-y: auto;"></div>
+      <button class="auth-btn" style="margin-top: 20px; background: #4e5058;" onclick="document.getElementById('mediaArchiveModalOverlay').style.display = 'none'">Kapat</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="channelSettingsModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 400px; text-align: left;">
+      <button class="modal-close-btn" onclick="document.getElementById('channelSettingsModalOverlay').style.display = 'none'">&#10005;</button>
+      <h2 style="font-size: 16px; margin-bottom: 10px;" id="channelSettingsTitle">⚙️ Kanal Ayarları</h2>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;" id="channelSettingsSubDesc">Kanal bilgilerini görüntüleyin:</p>
+      
+      <div class="auth-field" style="margin-bottom: 12px;">
+        <label>Davet Linki</label>
+        <input type="text" id="modalInviteLinkInput" readonly style="background:var(--bg-tertiary); cursor:pointer;" onclick="this.select(); document.execCommand('copy'); alert('Davet linki kopyalandı!');">
+      </div>
+
+      <div style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+        <h3 style="font-size: 12px; color: #f0b232; text-transform: uppercase; margin-bottom: 8px; font-weight: bold;">🔒 Gizli Oda ve Kilit Modu</h3>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Bu odayı kilitleyerek dışarıdan izinsiz girişleri engelleyin:</p>
+        <button class="auth-btn" id="channelLockButton" style="background: #5865f2; font-size: 12px; padding: 8px;" onclick="toggleCurrentChannelLock()">🔒 Odayı Kilitle / Kilidi Aç</button>
+      </div>
+
+      <div style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+        <h3 style="font-size: 12px; color: #f0b232; text-transform: uppercase; margin-bottom: 8px; font-weight: bold;">🛡️ Mesaj Yönetimi</h3>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Bu kanaldaki geçmiş mesajları temizleyin:</p>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <button class="auth-btn" style="background: #4e5058; font-size: 11px; padding: 6px;" onclick="clearChannelMessages('1day')">Son 1 Günün Mesajlarını Sil</button>
+          <button class="auth-btn" style="background: #f0b232; color: #000; font-size: 11px; padding: 6px;" onclick="clearChannelMessages('1week')">Son 1 Haftanın Mesajlarını Sil</button>
+          <button class="auth-btn" style="background: #da373c; font-size: 11px; padding: 6px;" onclick="clearChannelMessages('all')">Bütün Mesajları Sil</button>
+        </div>
+      </div>
+
+      <div id="channelDeleteSectionContainer" style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display: none;">
+        <h3 style="font-size: 12px; color: #da373c; text-transform: uppercase; margin-bottom: 8px; font-weight: bold;">⚠️ Tehlikeli Bölge</h3>
+        <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Bu dünyayı veya kanalı ve tüm geçmişini kalıcı olarak silmek istiyorsanız aşağıdaki butonu kullanabilirsiniz.</p>
+        <button class="auth-btn" style="background: #da373c;" onclick="deleteCurrentChannelAction()">Kanalı / Dünyayı Kalıcı Olarak Sil</button>
+      </div>
+
+      <button class="auth-btn" style="margin-top: 15px; background: #4e5058;" onclick="document.getElementById('channelSettingsModalOverlay').style.display = 'none'">Kapat</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="createChannelModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 400px; text-align: left;">
+      <button class="modal-close-btn" onclick="document.getElementById('createChannelModalOverlay').style.display = 'none'">&#10005;</button>
+      <h2 style="font-size: 18px; margin-bottom: 15px;">➕ Yeni Dünya</h2>
+      
+      <div class="auth-field">
+        <label>Kanal Türü / Kategorisi</label>
+        <select id="newChannelTypeSelect">
+          <option value="Ses Kanalı">🔊 Ses ve Görüntü Kanalı (Kamera/Ekran)</option>
+          <option value="Metin Kanalı">💬 Metin / Sohbet Kanalı</option>
+          <option value="Oyun Kanalı">🎮 Oyun Kanalı</option>
+          <option value="Arkadaş Kanalı">👥 Arkadaş Kanalı</option>
+          <option value="Sevgili Kanalı">❤️ Sevgili Kanalı</option>
+        </select>
+      </div>
+
+      <div class="auth-field" style="margin-top: 10px;">
+        <label>Dünya Adı</label>
+        <input type="text" id="newChannelNameInput" placeholder="Örn: Sevgili Odası">
+      </div>
+
+      <div class="auth-field" style="margin-top: 10px;">
+        <label>Maksimum Kişi Kapasitesi</label>
+        <input type="number" id="newChannelCapacityInput" value="2" min="1" max="100" placeholder="Örn: 2 (Sadece ikisi için)">
+      </div>
+
+      <div class="auth-field" style="margin-top: 10px;">
+        <label>Şifre (İsteğe bağlı)</label>
+        <input type="password" id="newChannelPassInput" placeholder="Şifre koymak istemiyorsanız boş bırakın">
+      </div>
+
+      <button class="auth-btn" style="margin-top: 15px; background: #23a55a;" onclick="submitNewChannelCreation()">Dünyayı Oluştur</button>
+      <div class="error-msg" id="channelCreateErr" style="display:block; margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="channelRoleModalOverlay" style="display: none;">
+    <div class="modal-card" style="width: 380px; text-align: left;">
+      <button class="modal-close-btn" onclick="document.getElementById('channelRoleModalOverlay').style.display = 'none'">&#10005;</button>
+      <h2 style="font-size: 16px; margin-bottom: 10px;">👑 Kanal İçi Rol Ata</h2>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;" id="roleModalUserDesc">Kullanıcıya bu kanal için özel rol verin:</p>
+      <input type="hidden" id="targetRoleUsername">
+      <div class="auth-field">
+        <label>Rol Seç</label>
+        <select id="channelRoleSelect">
+          <option value="Üye">Üye</option>
+          <option value="VIP">VIP</option>
+          <option value="Moderatör">Moderatör</option>
+        </select>
+      </div>
+      <button class="auth-btn" style="margin-top: 10px; background: #23a55a;" onclick="submitChannelRole()">Rolü Güncelle</button>
+      <div class="error-msg" id="channelRoleErr" style="display:block; margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <div class="server-sidebar" id="serverSidebarContainer"></div>
+
+    <div class="channel-category-sidebar">
+      <div style="font-weight:bold; font-size:13px; padding: 4px 6px; margin-bottom: 6px; color:var(--text-main); border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+        <span>MemoChat Sunucusu</span>
+      </div>
+
+      <div class="category-header" onclick="toggleCategory('channelsListGroup')">
+        <span>▼ Kanallar ve Dünyalar</span>
+      </div>
+      <div class="category-channels" id="channelsListGroup"></div>
+    </div>
+
+    <div class="modal-overlay" id="authOverlay">
+      <div class="modal-card">
+        <h2 id="authTitle">MemoChat Giriş</h2>
+        <div class="auth-field">
+          <label for="userInput">Kullanıcı Adı</label>
+          <input type="text" id="userInput" placeholder="Kullanıcı adın">
+        </div>
+        <div class="auth-field">
+          <label for="passInput">Şifren</label>
+          <input type="password" id="passInput" placeholder="Şifren">
+        </div>
+        
+        <button class="auth-btn" id="authActionBtn" onclick="handleAuthAction()">Giriş Yap</button>
+        
+        <div class="auth-switch" id="authSwitchText">
+          Hesabın yok mu? <span onclick="toggleAuthMode(true)">Üye Ol</span>
+        </div>
+        <div class="error-msg" id="errorMsg"></div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="addFriendModalOverlay" style="display: none;">
+      <div class="modal-card">
+        <button class="modal-close-btn" onclick="document.getElementById('addFriendModalOverlay').style.display='none'">&#10005;</button>
+        <h2>👥 Arkadaş Ekle</h2>
+        <div class="auth-field" style="margin-top: 15px;">
+          <label>Kullanıcı Adı</label>
+          <input type="text" id="friendUsernameInput" placeholder="Eklemek istediğin kullanıcının adı">
+        </div>
+        <button class="auth-btn" onclick="sendFriendRequest()">İstek Gönder</button>
+        <div class="error-msg" id="friendModalMsg" style="display:block; margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="channelPasswordOverlay" style="display: none;">
+      <div class="modal-card">
+        <button class="modal-close-btn" onclick="closeChannelPasswordModal()">&#10005;</button>
+        <h2 id="channelModalTitle">Kanal Şifresi Gir</h2>
+        <p style="font-size:13px; color:var(--text-muted); margin-bottom:15px;" id="channelModalDesc">Bu kanala katılmak için şifre gereklidir.</p>
+        <div class="auth-field" id="channelPassFieldContainer">
+          <label for="channelPasswordInput">Kanal Şifresi</label>
+          <input type="password" id="channelPasswordInput" placeholder="Şifre" onkeypress="handlePasswordKeyPress(event)">
+        </div>
+        <button class="auth-btn" onclick="verifyChannelPassword()">Kanala Bağlan</button>
+        <div class="error-msg" id="channelErrorMsg"></div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="volumeModalOverlay" style="display: none;">
+      <div class="modal-card" style="width: 350px; text-align: left;">
+        <button class="modal-close-btn" onclick="document.getElementById('volumeModalOverlay').style.display = 'none'">&#10005;</button>
+        <h2 style="font-size: 16px; margin-bottom: 15px;">🔊 Kanal Ses Düzeyi</h2>
+        <div class="auth-field">
+          <label>Kanal Ses Seviyesi: <span id="volumeValueText">100</span>%</label>
+          <input type="range" id="channelVolumeRange" min="0" max="100" value="100" oninput="changeChannelVolume(this.value)" style="width: 100%; cursor: pointer;">
+        </div>
+        <button class="auth-btn" style="margin-top: 10px;" onclick="document.getElementById('volumeModalOverlay').style.display = 'none'">Tamam</button>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="adminDashboardOverlay" style="display: none;">
+      <div class="modal-card admin-dashboard-card">
+        <button class="modal-close-btn" onclick="toggleAdminDashboard(false)">&#10005;</button>
+        <h2 id="dashboardTitle">🎛️ Yönetici Paneli</h2>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:15px;" id="dashboardDesc">Sistemdeki üyelikleri ve banları yönet:</p>
+        
+        <div class="dashboard-section" id="pendingSectionContainer" style="display: none;">
+          <h3>⏳ Onay Bekleyen Üyelikler (<span id="pendingCountBadge">0</span>)</h3>
+          <div id="pendingListContainer" style="max-height: 90px; overflow-y: auto;">Bekleyen üyelik yok.</div>
+        </div>
+
+        <div class="dashboard-section" id="allUsersSectionContainer" style="display: none;">
+          <h3>👑 Üye Yönetimi ve Süreli Ban</h3>
+          <div id="allUsersListContainer" style="max-height: 120px; overflow-y: auto;">Kayıtlı üye yok.</div>
+        </div>
+
+        <button class="auth-btn" style="background: #4e5058;" onclick="toggleAdminDashboard(false)">Paneli Kapat</button>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="settingsOverlay" style="display: none;">
+      <div class="modal-card settings-modal-card">
+        <button class="modal-close-btn" onclick="toggleSettingsModal(false)" style="z-index: 1000002;">&#10005;</button>
+        
+        <div class="settings-sidebar">
+          <div style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase; padding: 5px 10px;">Kullanıcı Ayarları</div>
+          <button class="settings-tab-btn active" id="tabBtnGeneral" onclick="switchSettingsTab('general')">👤 Genel Ayarlar</button>
+          <button class="settings-tab-btn" id="tabBtnProfile" onclick="switchSettingsTab('profile')">✨ Profil & Banner</button>
+          <button class="settings-tab-btn" id="tabBtnWorlds" onclick="switchSettingsTab('worlds')">🌍 Dünyaları Düzenle</button>
+          <button class="settings-tab-btn" id="tabBtnStatus" onclick="switchSettingsTab('status')">💬 Durum / Çevrimiçi</button>
+          <button class="settings-tab-btn" id="tabBtnAudio" onclick="switchSettingsTab('audio')">🎤 Ses / Bildirimler</button>
+          <button class="settings-tab-btn" id="tabBtnWeather" onclick="switchSettingsTab('weather')">⛅ Canlı Atmosfer</button>
+          <button class="settings-tab-btn" id="tabBtnSecurity" onclick="switchSettingsTab('security')">🔒 Şifre Güvenliği</button>
+          
+          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-color);">
+            <button class="settings-tab-btn" style="color: #da373c;" onclick="logoutUser()">🚪 Çıkış Yap</button>
+          </div>
+        </div>
+
+        <div class="settings-content-area">
+          <div class="settings-pane active" id="settingsPaneGeneral">
+            <h2 style="font-size: 16px; margin-bottom: 15px; color:var(--text-main);">Genel Profil ve Görünüm Ayarları</h2>
+            <div class="auth-field">
+              <label>Kullanıcı Adı</label>
+              <input type="text" id="settingsUsernameInput" placeholder="Yeni kullanıcı adın">
+            </div>
+            <button class="auth-btn" style="margin-bottom: 15px; background: #4e5058;" onclick="updateUsernameAction()">Kullanıcı Adını Güncelle</button>
+
+            <div class="auth-field" style="margin-top: 15px;">
+              <label>Profil Fotoğrafı Seç</label>
+              <input type="file" id="avatarFileInput" accept="image/*" style="background: var(--bg-tertiary); padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-main); width: 100%; cursor: pointer;" onchange="uploadAvatar(this)">
+            </div>
+
+            <div class="auth-field" style="margin-top: 15px;">
+              <label>Görünüm / Tema ve Vurgu Rengi</label>
+              <select id="themeSelect" onchange="changeTheme(this.value)" style="margin-bottom: 8px;">
+                <option value="dark">Koyu Tema (Discord Tarzı)</option>
+                <option value="light">Açık Tema</option>
+              </select>
+              <select id="accentColorSelect" onchange="changeAccentColor(this.value)">
+                <option value="#5865f2">Klasik Mor / Mavi</option>
+                <option value="#23a55a">Discord Yeşili</option>
+                <option value="#eb459e">Neon Pembe</option>
+                <option value="#f0b232">Altın Sarısı</option>
+                <option value="#e056fd">Mor Işıltı</option>
+              </select>
+            </div>
+
+            <div class="auth-field" style="margin-top: 15px;">
+              <label>Özel Arka Plan Görseli (Wallpaper URL)</label>
+              <input type="text" id="wallpaperUrlInput" placeholder="Örn: https://example.com/bg.jpg" oninput="changeWallpaper(this.value)">
+            </div>
+          </div>
+
+          <div class="settings-pane" id="settingsPaneProfile">
+            <h2 style="font-size: 16px; margin-bottom: 15px; color:var(--text-main);">Gelişmiş Profil ve Banner Özelleştirme</h2>
+            <div class="auth-field">
+              <label>Profil Arka Plan Resmi (Banner URL)</label>
+              <input type="text" id="settingsBannerInput" placeholder="Örn: https://example.com/banner.jpg">
+            </div>
+            <div class="auth-field" style="margin-top: 12px;">
+              <label>Doğum Günü</label>
+              <input type="date" id="settingsBirthdayInput">
+            </div>
+            <div class="auth-field" style="margin-top: 12px;">
+              <label>Hakkımda / Biyografi</label>
+              <textarea id="settingsBioInput" rows="3" placeholder="Kendinden bahset..."></textarea>
+            </div>
+            <button class="auth-btn" style="margin-top: 15px; background: #23a55a;" onclick="updateProfileDetailsAction()">Profil Detaylarını Kaydet</button>
+          </div>
+
+          <div class="settings-pane" id="settingsPaneWorlds">
+            <h2 style="font-size: 16px; margin-bottom: 5px; color:var(--text-main);">🌍 Dünyaları / Kanalları Düzenle</h2>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;">Sistemde bulunan dünyaları buradan listeleyebilir, katılabilir veya silebilirsin.</p>
+            <div id="settingsWorldsListContainer" style="display: flex; flex-direction: column; gap: 6px; max-height: 350px; overflow-y: auto;"></div>
+          </div>
+
+          <div class="settings-pane" id="settingsPaneStatus">
+            <h2 style="font-size: 16px; margin-bottom: 15px; color:var(--text-main);">Durum ve Çevrimiçi Rozeti</h2>
+            <div class="auth-field">
+              <label>Çevrimiçi Durumu</label>
+              <select id="statusBadgeSelect" onchange="updateUserStatusBadge(this.value)">
+                <option value="online">🟢 Çevrimiçi</option>
+                <option value="idle">🟡 Boşta</option>
+                <option value="dnd">🔴 Rahatsız Etmeyin</option>
+                <option value="offline">⚪ Çevrimdışı</option>
+              </select>
+            </div>
+            <div class="auth-field" style="margin-top: 12px;">
+              <label>Durum / Hakkımda Mesajı</label>
+              <input type="text" id="settingsStatusInput" placeholder="Örn: Kod yazıyor...">
+            </div>
+            <button class="auth-btn" style="margin-top: 10px; background: #23a55a;" onclick="updateStatusAction()">Durumu Kaydet</button>
+          </div>
+
+          <div class="settings-pane" id="settingsPaneAudio">
+            <h2 style="font-size: 16px; margin-bottom: 15px; color:var(--text-main);">Ses, Görüntü ve Bildirim Ayarları</h2>
+            <div class="auth-field">
+              <label>🎤 Mikrofon Cihazı Seç</label>
+              <select id="audioSourceSelect"></select>
+            </div>
+            <div class="auth-field" style="margin-top: 12px;">
+              <label>⚡ Akış Kalitesi ve Yenileme Hızı (Hz)</label>
+              <select id="videoQualitySelect" onchange="changeVideoQuality(this.value)">
+                <option value="1080p">1080p Çözünürlük / 90Hz Ultra Akıcı</option>
+                <option value="720p" selected>720p Çözünürlük / 60Hz Akıcı</option>
+              </select>
+            </div>
+            <div class="auth-field" style="margin-top: 12px;">
+              <label>🔔 Masaüstü ve Tarayıcı Bildirimleri</label>
+              <button class="auth-btn" style="background: var(--accent-color); margin-top: 5px;" onclick="requestNotificationPermission()">Bildirim İzni Ver / Test Et</button>
+            </div>
+            <div class="auth-field" style="margin-top: 12px;">
+              <label>🔔 Bildirim Ses Efektleri</label>
+              <select id="soundEffectToggleSelect" onchange="updateSoundSettings()">
+                <option value="on">Açık (Giriş/Çıkış Sesleri Çalsın)</option>
+                <option value="off">Kapalı (Sessiz Mod)</option>
+              </select>
+            </div>
+            <div class="auth-field" style="margin-top: 12px;">
+              <label>Ses Efekti Ses Düzeyi: <span id="sfxVolText">80</span>%</label>
+              <input type="range" id="sfxVolumeRange" min="0" max="100" value="80" oninput="updateSfxVolume(this.value)" style="width: 100%; cursor: pointer;">
+            </div>
+            <button class="auth-btn" style="margin-top: 15px; background: #23a55a;" onclick="alert('Ses ve akış ayarların kaydedildi!')">Kaydet</button>
+          </div>
+
+          <!-- Canlı Hava Durumu & Atmosfer Sekmesi -->
+          <div class="settings-pane" id="settingsPaneWeather">
+            <h2 style="font-size: 16px; margin-bottom: 10px; color:var(--text-main);">⛅ Canlı Konum ve Hava Durumu Atmosferi</h2>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;">Konumuna izin vererek odanın arayüzünü bulunduğun şehrin hava durumuna (yağmur, kar, gece modu) otomatik uydurabilirsin. İzin vermezsen mevcut görünümün sabit kalır.</p>
+            
+            <div class="auth-field" style="margin-bottom: 12px;">
+              <label>Konum Durumu</label>
+              <div id="weatherStatusText" style="font-size: 13px; font-weight: bold; color: var(--accent-color); padding: 8px 0;">Konum henüz paylaşılmadı.</div>
+            </div>
+
+            <button class="auth-btn" style="background: #23a55a; margin-bottom: 8px;" onclick="initLiveWeatherSync()">📍 Konumumu Paylaş ve Atmosferi Başlat</button>
+            <button class="auth-btn" style="background: #da373c;" onclick="disableLiveWeatherSync()">❌ Canlı Atmosferi Kapat / Varsayılanı Koru</button>
+          </div>
+
+          <div class="settings-pane" id="settingsPaneSecurity">
+            <h2 style="font-size: 16px; margin-bottom: 15px; color:var(--text-main);">Şifre Güvenliği</h2>
+            <div class="auth-field">
+              <label>Mevcut Şifre</label>
+              <input type="password" id="oldPassInput" placeholder="Mevcut şifren">
+            </div>
+            <div class="auth-field">
+              <label>Yeni Şifre</label>
+              <input type="password" id="newPassInput" placeholder="Yeni şifren">
+            </div>
+            <div class="auth-field">
+              <label>Yeni Şifre (Tekrar)</label>
+              <input type="password" id="newPassConfirmInput" placeholder="Yeni şifreni tekrar gir">
+            </div>
+            <button class="auth-btn" style="margin-top: 10px; background: #23a55a;" onclick="updatePasswordAction()">Şifreyi Değiştir</button>
+          </div>
+
+          <div class="error-msg" id="settingsErrorMsg" style="display:block; margin-top: 15px;"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div>
+        <div class="user-info-bar">
+          <div id="userAvatarDisplay" class="user-avatar-small">👤</div>
+          <div>
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span id="userInfoDisplay">Giriş Yapılmadı</span>
+            </div>
+            <span id="userStatusDisplay" style="font-size:10px; color:var(--text-muted); font-weight:normal;"></span>
+          </div>
+          <button class="account-settings-btn" onclick="openSettingsModal()">Ayarlar</button>
+        </div>
+        
+        <button id="adminBirthdayBoxBtn" style="background: linear-gradient(135deg, #eb459e, #ff6b81); color: #fff; border: none; width: 100%; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 8px; display: none; font-size: 13px; box-shadow: 0 4px 15px rgba(235, 69, 158, 0.4); text-align: center;" onclick="triggerGlobalBirthdayCelebration()">🎉 Doğum Günü Sürprizi</button>
+
+        <button class="admin-dash-btn" id="adminDashBtn" style="background: #f0b232; color: #000; border: none; width: 100%; padding: 8px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-bottom: 8px; display: none; font-size: 13px;" onclick="toggleAdminDashboard(true)">🎛️ Yönetici Paneli</button>
+
+        <button class="auth-btn" style="background: linear-gradient(135deg, #eb459e, #ff6b81); margin-bottom: 8px; font-size: 13px;" onclick="openPokeModal()">💌 Sürpriz Gönder</button>
+
+        <div class="channel-search-box">
+          <input type="text" id="channelSearchInput" class="channel-search-input" placeholder="Dünya adı ara..." onkeypress="handleChannelSearchKey(event)">
+          <button class="channel-search-btn" onclick="searchAndJoinChannel()">Bul</button>
+        </div>
+
+        <div class="friends-section">
+          <div class="friends-header">
+            <span>Arkadaşlar</span>
+            <span style="cursor:pointer; color:#00a8fc;" onclick="document.getElementById('addFriendModalOverlay').style.display='flex'" title="Arkadaş Ekle">+ Ekle</span>
+          </div>
+          <div class="friends-list" id="friendsListContainer">
+            <div style="font-size:11px; color:var(--text-muted); padding:4px;">Henüz arkadaşın yok.</div>
+          </div>
+          <div class="friend-requests-box" id="friendRequestsBox" style="display: none;"></div>
+        </div>
+
+        <div class="room-users-section" id="roomUsersSection" style="display: none;">
+          <h4>
+            <span id="currentChannelNameDisplay">Kanaldaykiler</span>
+            <span id="channelOwnerIndicator" style="font-size: 10px; color: #f0b232; font-weight: bold;"></span>
+          </h4>
+          <div id="roomUsersList"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="soundboard-panel" id="soundboardPanel">
+          <div class="soundboard-title">🔊 Soundboard (Ses Efektleri)</div>
+          <div class="soundboard-grid">
+            <button class="sound-btn" onclick="triggerSound('applause')">👏 Alkış</button>
+            <button class="sound-btn" onclick="triggerSound('airhorn')">📢 Korna</button>
+            <button class="sound-btn" onclick="triggerSound('badtiss')">🥁 Ba-Dum</button>
+          </div>
+        </div>
+
+        <div class="controls" id="controlsSection">
+          <button class="btn" id="micBtn" onclick="toggleMic()">🎤 Mikrofon</button>
+          <button class="btn" id="deafenBtn" onclick="toggleDeafen()">🎧 Kulaklık: Açık</button>
+          <button class="btn" id="camBtn" onclick="toggleCam()">📷 Kamera Kapalı</button>
+          <button class="btn btn-success" id="screenBtn" onclick="startScreenShare()">📺 Ekran Paylaşımı</button>
+          <button class="btn btn-warning" id="stopScreenBtn" onclick="stopScreenShare()" style="display: none;">🛑 Paylaşımı Bitir</button>
+          <button class="btn" style="background: #eb459e;" onclick="openWatchPartyModal()">🎬 Birlikte İzle</button>
+          <button class="btn btn-danger" onclick="leaveCurrentChannel()">📞 Kanaldan Ayrıl</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-content" id="mainContentArea">
+      <div class="empty-screen-state" id="emptyState">
+        Bir ses kanalına katıldığında, kamera açtığında veya ekran paylaştığında burada görünecektir.<br><span style="font-size: 12px; color:var(--text-muted);">(Görüntüyü büyütmek için üzerine çift tıklayabilirsin)</span>
+      </div>
+
+      <div class="video-stage" id="videoStage"></div>
+    </div>
+
+    <div class="chat-sidebar" id="chatSidebar" style="display: flex;">
+      <div class="chat-header" id="chatHeaderTitle">
+        <span>💬 Genel Kanal Sohbeti</span>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button class="account-settings-btn" onclick="openMediaArchiveModal()" title="Kanalda Paylaşılan Medyalar">📁 Medya</button>
+          <button class="account-settings-btn" id="channelSettingsHeaderBtn" onclick="openChannelSettingsModal()">⚙️ Kanal Ayarları</button>
+        </div>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+      
+      <div class="typing-indicator-box" id="typingIndicator"></div>
+
+      <div class="chat-input-area">
+        <div style="position: relative;">
+          <div class="file-btn-label" title="Dosya veya Anket Ekle" onclick="toggleAttachmentMenu(event)">📎</div>
+          <div class="attachment-menu" id="attachmentMenu">
+            <div class="attachment-menu-item" onclick="selectAttachmentOption('media')">📁 Medya / Dosya</div>
+            <div class="attachment-menu-item" onclick="selectAttachmentOption('poll')">📊 Anket Oluştur</div>
+          </div>
+        </div>
+        <input type="file" id="fileInput" style="display: none;" onchange="sendFile(this)">
+
+        <input type="text" id="chatInput" placeholder="Mesaj yaz..." oninput="handleTypingInput()" onkeypress="handleKeyPress(event)">
+        <button class="send-btn" onclick="sendMessage()">Gönder</button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="remoteAudioElement" autoplay></audio>
+
+  <script>
+    const socket = io({
+      transports: ['polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      timeout: 10000
+    });
+    
+    let peer;
+    let isRegisterMode = false;
+    let localStream, cameraStream, screenStream;
+    let activeCalls = {}; 
+    let peerStreams = {}; 
+    let isConnected = false, isMicOn = true, isDeafened = false, isCamOn = false, isScreenSharing = false;
+    let username = "", userAvatar = "", userStatus = "", userBanner = "", userBirthday = "", userBio = "", remoteUsername = "Arkadaşın", remoteAvatar = "";
+    let currentRoom = "";
+    let isDM = false;
+    let typingTimer;
+    let currentVideoQuality = "720p";
+
+    let userStatusBadge = 'online';
+    let sfxEnabled = true;
+    let sfxVolume = 0.8;
+
+    let authenticatedChannels = {}; 
+    let cachedAllUsers = {};
+    let cachedChannels = {}; 
+    let myJoinedChannels = []; 
+    let cachedActiveUsers = [];
+    let pendingUsersArray = [];
+    let myFriends = [];
+    let myRequests = [];
+    let isAdminUser = false;
+    let isMusicPlaying = false;
+    let targetSelectedChannel = "";
+    let tempPollQuestion = "";
+    let watchPartyOwner = "";
+
+    let remoteAudioCtx = null;
+    const remoteAudioElement = document.getElementById('remoteAudioElement');
+    const videoStage = document.getElementById('videoStage');
+    const emptyState = document.getElementById('emptyState');
+
+    window.addEventListener('click', (e) => {
+      if (!e.target.closest('.server-icon') && !e.target.closest('#channelContextMenu')) {
+        document.getElementById('channelContextMenu').style.display = 'none';
+      }
+      if (!e.target.closest('.user-list-item') && !e.target.closest('#userContextMenu')) {
+        document.getElementById('userContextMenu').style.display = 'none';
+      }
+      if (!e.target.closest('.profile-popover') && !e.target.closest('.user-list-item') && !e.target.closest('#author')) {
+        document.getElementById('userProfilePopover').style.display = 'none';
+      }
+      if (!e.target.closest('.file-btn-label') && !e.target.closest('#attachmentMenu')) {
+        document.getElementById('attachmentMenu').style.display = 'none';
+      }
+    });
+
+    window.addEventListener('load', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const inviteCode = urlParams.get('invite');
+      if (inviteCode) {
+        localStorage.setItem('pendingInvite', inviteCode);
+      }
+      requestNotificationPermission();
+    });
+
+    /* Canlı Hava Durumu & Atmosfer Senkronizasyonu */
+    function initLiveWeatherSync() {
+      const statusText = document.getElementById('weatherStatusText');
+      if (!navigator.geolocation) {
+        statusText.innerText = "Tarayıcınız konum servislerini desteklemiyor.";
+        return;
+      }
+
+      statusText.innerText = "Konum alınıyor, lütfen bekleyin...";
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        
+        try {
+          const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+          const data = await response.json();
+          
+          if (data && data.current_weather) {
+            const weatherCode = data.current_weather.weathercode;
+            const isDay = data.current_weather.is_day;
+            
+            applyAtmosphereEffect(weatherCode, isDay);
+            statusText.innerText = `Konum başarıyla senkronize edildi! (Hava Kodu: ${weatherCode}, ${isDay ? 'Gündüz' : 'Gece'})`;
+            localStorage.setItem('memoWeatherActive', 'true');
+            localStorage.setItem('memoWeatherCode', weatherCode);
+            localStorage.setItem('memoWeatherDay', isDay);
+          } else {
+            statusText.innerText = "Hava durumu verisi alınamadı.";
+          }
+        } catch (e) {
+          statusText.innerText = "Hava durumu servisine bağlanılamadı.";
+        }
+      }, (error) => {
+        statusText.innerText = "Konum izni reddedildi. Varsayılan görünüm korunuyor.";
+      });
+    }
+
+    function disableLiveWeatherSync() {
+      localStorage.removeItem('memoWeatherActive');
+      document.getElementById('weatherEffectLayer').style.display = 'none';
+      document.getElementById('weatherEffectLayer').innerHTML = "";
+      document.getElementById('weatherStatusText').innerText = "Canlı atmosfer kapatıldı. Varsayılan tema aktif.";
+      document.body.style.filter = "none";
+    }
+
+    function applyAtmosphereEffect(weatherCode, isDay) {
+      const layer = document.getElementById('weatherEffectLayer');
+      layer.innerHTML = "";
+      layer.style.display = 'block';
+
+      if (isDay === 0) {
+        document.body.style.filter = "brightness(0.85) contrast(1.05)";
+      } else {
+        document.body.style.filter = "none";
+      }
+
+      const isRainy = (weatherCode >= 51 && weatherCode <= 67) || (weatherCode >= 80 && weatherCode <= 99);
+      const isSnowy = (weatherCode >= 71 && weatherCode <= 77) || (weatherCode === 85 || weatherCode === 86);
+
+      if (isRainy) {
+        for (let i = 0; i < 60; i++) {
+          const drop = document.createElement('div');
+          drop.className = 'raindrop';
+          drop.style.left = `${Math.random() * 100}vw`;
+          drop.style.top = `${-20 - Math.random() * 50}px`;
+          drop.style.animationDuration = `${0.5 + Math.random() * 0.5}s`;
+          drop.style.animationDelay = `${Math.random() * 2}s`;
+          layer.appendChild(drop);
+        }
+      } else if (isSnowy) {
+        for (let i = 0; i < 50; i++) {
+          const flake = document.createElement('div');
+          flake.className = 'snowflake';
+          const size = `${4 + Math.random() * 6}px`;
+          flake.style.width = size;
+          flake.style.height = size;
+          flake.style.left = `${Math.random() * 100}vw`;
+          flake.style.top = `${-10 - Math.random() * 30}px`;
+          flake.style.animationDuration = `${2 + Math.random() * 3}s`;
+          flake.style.animationDelay = `${Math.random() * 3}s`;
+          layer.appendChild(flake);
+        }
+      }
+    }
+
+    function openPokeModal() {
+      if (!currentRoom) return alert("Önce bir kanalda veya odada olmalısın!");
+      document.getElementById('pokeModalOverlay').style.display = 'flex';
+    }
+
+    function sendPokeMessage(icon, text) {
+      document.getElementById('pokeModalOverlay').style.display = 'none';
+      socket.emit('send-poke-notification', { roomId: currentRoom, username: username, messageText: text });
+      triggerPokeAnimation(icon, username, text);
+    }
+
+    function triggerPokeAnimation(icon, sender, text) {
+      playDiscordSound('mention');
+      const popup = document.getElementById('pokePopup');
+      document.getElementById('pokePopupIcon').innerText = icon;
+      document.getElementById('pokePopupSender').innerText = `@${sender} gönderdi:`;
+      document.getElementById('pokePopupText').innerText = text;
+      
+      popup.style.display = 'block';
+
+      const overlay = document.body;
+      for (let i = 0; i < 35; i++) {
+        const heart = document.createElement('div');
+        heart.innerHTML = icon;
+        heart.style.position = 'fixed';
+        heart.style.left = `${Math.random() * 100}vw`;
+        heart.style.bottom = '-20px';
+        heart.style.fontSize = `${16 + Math.random() * 24}px`;
+        heart.style.zIndex = '99999999';
+        heart.style.pointerEvents = 'none';
+        heart.style.animation = `fallConfetti ${2 + Math.random() * 2}s linear forwards`;
+        overlay.appendChild(heart);
+
+        setTimeout(() => heart.remove(), 4000);
+      }
+
+      setTimeout(() => {
+        popup.style.display = 'none';
+      }, 4000);
+    }
+
+    function toggleAttachmentMenu(e) {
+      e.stopPropagation();
+      const menu = document.getElementById('attachmentMenu');
+      menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+    }
+
+    function selectAttachmentOption(type) {
+      document.getElementById('attachmentMenu').style.display = 'none';
+      if (type === 'media') {
+        document.getElementById('fileInput').click();
+      } else if (type === 'poll') {
+        openPollModal();
+      }
+    }
+
+    function openPollModal() {
+      if (!currentRoom) return alert("Önce bir kanalda olmalısın!");
+      document.getElementById('pollQuestionInput').value = "";
+      document.getElementById('pollOptionsTextarea').value = "";
+      document.getElementById('pollModalErr').innerText = "";
+      document.getElementById('pollQuestionStep').style.display = 'block';
+      document.getElementById('pollOptionsStep').style.display = 'none';
+      document.getElementById('pollModalOverlay').style.display = 'flex';
+    }
+
+    function proceedToPollOptions() {
+      const q = document.getElementById('pollQuestionInput').value.trim();
+      const err = document.getElementById('pollModalErr');
+      if (!q) {
+        err.innerText = "Lütfen anket sorusunu yazın!";
+        return;
+      }
+      tempPollQuestion = q;
+      err.innerText = "";
+      document.getElementById('pollQuestionStep').style.display = 'none';
+      document.getElementById('pollOptionsStep').style.display = 'block';
+    }
+
+    function backToPollQuestion() {
+      document.getElementById('pollOptionsStep').style.display = 'none';
+      document.getElementById('pollQuestionStep').style.display = 'block';
+    }
+
+    function submitNewPoll() {
+      const optionsRaw = document.getElementById('pollOptionsTextarea').value.trim();
+      const err = document.getElementById('pollModalErr');
+      const lines = optionsRaw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+      if (lines.length < 2) {
+        err.innerText = "Lütfen en az 2 seçenek girin!";
+        return;
+      }
+
+      const options = lines.map(opt => ({ text: opt, votes: 0, voters: [] }));
+      const pollData = { id: 'poll_' + Date.now(), question: tempPollQuestion, options: options };
+
+      socket.emit('send-message', { roomId: currentRoom, user: username, avatar: userAvatar, message: "", file: null, poll: pollData });
+      document.getElementById('pollModalOverlay').style.display = 'none';
+    }
+
+    function requestNotificationPermission() {
+      if (!("Notification" in window)) return;
+      Notification.requestPermission();
+    }
+
+    function showDesktopNotification(title, bodyText) {
+      if (!("Notification" in window)) return;
+      if (Notification.permission === "granted") {
+        try {
+          const notification = new Notification(title, {
+            body: bodyText,
+            icon: userAvatar || "https://cdn-icons-png.flaticon.com/512/733/733585.png"
+          });
+          notification.onclick = function() {
+            window.focus();
+            notification.close();
+          };
+        } catch (e) {}
+      }
+    }
+
+    function changeTheme(themeName) {
+      if (themeName === 'light') {
+        document.body.classList.add('light-theme');
+      } else {
+        document.body.classList.remove('light-theme');
+      }
+    }
+
+    function changeAccentColor(colorHex) {
+      document.documentElement.style.setProperty('--accent-color', colorHex);
+    }
+
+    function changeWallpaper(url) {
+      if (url.trim() !== "") {
+        document.documentElement.style.setProperty('--custom-wallpaper', `url(${url})`);
+      } else {
+        document.documentElement.style.setProperty('--custom-wallpaper', 'none');
+      }
+    }
+
+    function toggleCategory(groupId) {
+      const el = document.getElementById(groupId);
+      if (el.style.display === 'none') {
+        el.style.display = 'flex';
+      } else {
+        el.style.display = 'none';
+      }
+    }
+
+    function updateUserStatusBadge(statusType) {
+      userStatusBadge = statusType;
+      socket.emit('update-status', { username: username, status: userStatus });
+      updateUserAvatarDisplay();
+    }
+
+    function showProfilePopover(e, targetUser, targetAvatar, targetStatus) {
+      e.stopPropagation();
+      const popover = document.getElementById('userProfilePopover');
+      const avatarContainer = document.getElementById('popoverAvatar');
+      if (targetAvatar) {
+        avatarContainer.innerHTML = `<img src="${targetAvatar}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+      } else {
+        avatarContainer.innerHTML = targetUser ? targetUser.charAt(0).toUpperCase() : "👤";
+      }
+
+      document.getElementById('popoverUsername').innerText = targetUser;
+      document.getElementById('popoverStatus').innerText = targetStatus || "Durum mesajı bulunmuyor.";
+      document.getElementById('popoverBanner').style.backgroundImage = userBanner ? `url(${userBanner})` : '';
+
+      const channelData = cachedChannels[currentRoom];
+      const channelOwner = channelData ? channelData.owner : "Sistem";
+      let roleText = "Üye";
+      if (channelData && channelData.channelRoles && channelData.channelRoles[targetUser]) {
+        roleText = channelData.channelRoles[targetUser];
+      } else if (targetUser === channelOwner || (channelOwner === "Sistem" && (targetUser === "admin" || targetUser === "memo"))) {
+        roleText = "Kanal Sahibi";
+      }
+      document.getElementById('popoverRole').innerText = roleText;
+      document.getElementById('popoverBirthday').innerText = userBirthday ? `🎂 Doğum Günü: ${userBirthday}` : "🎂 Doğum Günü: Belirtilmemiş";
+
+      const rect = e.target.getBoundingClientRect();
+      popover.style.top = `${Math.min(rect.top, window.innerHeight - 300)}px`;
+      popover.style.left = `${Math.max(10, rect.left - 330)}px`;
+      popover.style.display = 'block';
+    }
+
+    function updateSoundSettings() {
+      const val = document.getElementById('soundEffectToggleSelect').value;
+      sfxEnabled = (val === 'on');
+    }
+
+    function updateSfxVolume(val) {
+      sfxVolume = val / 100;
+      document.getElementById('sfxVolText').innerText = val;
+    }
+
+    function changeVideoQuality(val) {
+      currentVideoQuality = val;
+      if (isCamOn) { toggleCam(); toggleCam(); }
+      if (isScreenSharing) { stopScreenShare(); startScreenShare(); }
+    }
+
+    function openLightbox(src, type) {
+      const overlay = document.getElementById('lightboxModalOverlay');
+      const container = document.getElementById('lightboxContainer');
+      if (type === 'image') {
+        container.innerHTML = `<img src="${src}" style="max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 8px;">`;
+      } else if (type === 'video') {
+        container.innerHTML = `<video src="${src}" style="max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 8px;" controls autoplay></video>`;
+      }
+      overlay.style.display = 'flex';
+    }
+
+    function closeLightbox() {
+      document.getElementById('lightboxModalOverlay').style.display = 'none';
+      document.getElementById('lightboxContainer').innerHTML = "";
+    }
+
+    function openMediaArchiveModal() {
+      if (!currentRoom) return;
+      socket.emit('get-media-archive', { roomId: currentRoom });
+      socket.once('media-archive-response', (archiveList) => {
+        const container = document.getElementById('mediaArchiveGridContainer');
+        let html = "";
+        
+        if (!archiveList || archiveList.length === 0) {
+          container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 20px;">Bu kanalda henüz paylaşılan medya veya dosya bulunmuyor.</div>`;
+        } else {
+          archiveList.forEach(item => {
+            const f = item.file;
+            if (f.type.startsWith('image/')) {
+              html += `<div style="background:var(--bg-tertiary); border-radius:6px; overflow:hidden; padding:6px; display:flex; flex-direction:column; gap:4px;">
+                <img src="${f.data}" style="width:100%; height:120px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="openLightbox('${f.data}', 'image')">
+                <span style="font-size:10px; color:var(--text-muted);">@${item.user} (${item.time})</span>
+              </div>`;
+            } else if (f.type.startsWith('video/')) {
+              html += `<div style="background:var(--bg-tertiary); border-radius:6px; overflow:hidden; padding:6px; display:flex; flex-direction:column; gap:4px;">
+                <video src="${f.data}" style="width:100%; height:120px; object-fit:cover; border-radius:4px;"></video>
+                <span style="font-size:10px; color:var(--text-muted);">@${item.user} (${item.time})</span>
+              </div>`;
+            } else {
+              html += `<div style="background:var(--bg-tertiary); border-radius:6px; padding:10px; display:flex; flex-direction:column; justify-content:space-between; gap:4px;">
+                <a href="${f.data}" download="${f.name}" style="color:#00a8fc; font-size:12px; font-weight:bold; text-decoration:none;">📄 ${f.name}</a>
+                <span style="font-size:10px; color:var(--text-muted);">@${item.user} (${item.time})</span>
+              </div>`;
+            }
+          });
+        }
+        document.getElementById('mediaArchiveModalOverlay').style.display = 'flex';
+        container.innerHTML = html;
+      });
+    }
+
+    function toggleAuthMode(register) {
+      isRegisterMode = register;
+      const title = document.getElementById('authTitle');
+      const actionBtn = document.getElementById('authActionBtn');
+      const switchText = document.getElementById('authSwitchText');
+      const errorMsg = document.getElementById('errorMsg');
+      errorMsg.style.display = "none";
+
+      if (register) {
+        title.innerText = "Yeni Üyelik Oluştur";
+        actionBtn.innerText = "Kayıt Ol ve Onay Bekle";
+        switchText.innerHTML = `Zaten hesabın var mı? <span onclick="toggleAuthMode(false)">Giriş Yap</span>`;
+      } else {
+        title.innerText = "MemoChat Giriş";
+        actionBtn.innerText = "Giriş Yap";
+        switchText.innerHTML = `Hesabın yok mu? <span onclick="toggleAuthMode(true)">Üye Ol</span>`;
+      }
+    }
+
+    function switchSettingsTab(tabName) {
+      document.querySelectorAll('.settings-tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.settings-pane').forEach(pane => pane.classList.remove('active'));
+
+      if (tabName === 'general') {
+        document.getElementById('tabBtnGeneral').classList.add('active');
+        document.getElementById('settingsPaneGeneral').classList.add('active');
+      } else if (tabName === 'profile') {
+        document.getElementById('tabBtnProfile').classList.add('active');
+        document.getElementById('settingsPaneProfile').classList.add('active');
+      } else if (tabName === 'worlds') {
+        document.getElementById('tabBtnWorlds').classList.add('active');
+        document.getElementById('settingsPaneWorlds').classList.add('active');
+        renderWorldsManagerList();
+      } else if (tabName === 'status') {
+        document.getElementById('tabBtnStatus').classList.add('active');
+        document.getElementById('settingsPaneStatus').classList.add('active');
+      } else if (tabName === 'audio') {
+        document.getElementById('tabBtnAudio').classList.add('active');
+        document.getElementById('settingsPaneAudio').classList.add('active');
+      } else if (tabName === 'weather') {
+        document.getElementById('tabBtnWeather').classList.add('active');
+        document.getElementById('settingsPaneWeather').classList.add('active');
+      } else if (tabName === 'security') {
+        document.getElementById('tabBtnSecurity').classList.add('active');
+        document.getElementById('settingsPaneSecurity').classList.add('active');
+      }
+      document.getElementById('settingsErrorMsg').innerText = "";
+    }
+
+    async function openSettingsModal() {
+      document.getElementById('settingsOverlay').style.display = "flex";
+      switchSettingsTab('general');
+      document.getElementById('settingsUsernameInput').value = username;
+      document.getElementById('settingsStatusInput').value = userStatus;
+      document.getElementById('settingsBannerInput').value = userBanner;
+      document.getElementById('settingsBirthdayInput').value = userBirthday;
+      document.getElementById('settingsBioInput').value = userBio;
+      document.getElementById('statusBadgeSelect').value = userStatusBadge;
+      document.getElementById('oldPassInput').value = "";
+      document.getElementById('newPassInput').value = "";
+      document.getElementById('newPassConfirmInput').value = "";
+      document.getElementById('settingsErrorMsg').innerText = "";
+      await loadAudioDevices();
+    }
+
+    function toggleSettingsModal(show) {
+      document.getElementById('settingsOverlay').style.display = show ? "flex" : "none";
+    }
+
+    function updateProfileDetailsAction() {
+      const banner = document.getElementById('settingsBannerInput').value.trim();
+      const birthday = document.getElementById('settingsBirthdayInput').value;
+      const bio = document.getElementById('settingsBioInput').value.trim();
+      const err = document.getElementById('settingsErrorMsg');
+
+      userBanner = banner;
+      userBirthday = birthday;
+      userBio = bio;
+
+      socket.emit('update-profile-details', { username: username, banner: banner, birthday: birthday, bio: bio });
+      err.style.color = "#23a55a";
+      err.innerText = "Profil detayların başarıyla kaydedildi!";
+    }
+
+    function renderWorldsManagerList() {
+      const container = document.getElementById('settingsWorldsListContainer');
+      let html = "";
+
+      if (Object.keys(cachedChannels).length === 0) {
+        container.innerHTML = `<div style="font-size:12px; color:var(--text-muted);">Sistemde kayıtlı dünya bulunmuyor.</div>`;
+        return;
+      }
+
+      for (let chName in cachedChannels) {
+        const chData = cachedChannels[chName];
+        const isJoined = myJoinedChannels.includes(chName);
+        const owner = chData.owner || "Sistem";
+        const isOwnerOrSys = (owner === username || owner === "Sistem" && (username === "admin" || username === "memo") || isAdminUser);
+
+        let actionBtnHtml = "";
+        if (isJoined) {
+          actionBtnHtml += `<button class="auth-btn" style="background: #4e5058; padding: 5px 10px; width:auto; font-size:11px;" onclick="settingsLeaveWorld('${chName}')">Çık</button>`;
+        } else {
+          actionBtnHtml += `<button class="auth-btn" style="background: #23a55a; padding: 5px 10px; width:auto; font-size:11px;" onclick="settingsJoinWorld('${chName}')">Katıl</button>`;
+        }
+
+        if (isOwnerOrSys && chName !== "Genel Kanal") {
+          actionBtnHtml += `<button class="auth-btn" style="background: #da373c; padding: 5px 10px; width:auto; font-size:11px;" onclick="settingsDeleteWorld('${chName}')">Sil</button>`;
+        }
+
+        html += `
+          <div class="world-row">
+            <div class="world-row-info">
+              <span class="world-row-title">${chName} (${chData.type || 'Ses'})</span>
+              <span class="world-row-sub">Sahip: ${owner} | Durum: ${isJoined ? 'Ekli' : 'Listelenmiyor'}</span>
+            </div>
+            <div class="world-row-actions">
+              ${actionBtnHtml}
+            </div>
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+    }
+
+    function settingsJoinWorld(chName) {
+      if (!myJoinedChannels.includes(chName)) {
+        myJoinedChannels.push(chName);
+      }
+      renderServerSidebar();
+      selectChannel(chName);
+      toggleSettingsModal(false);
+    }
+
+    function settingsLeaveWorld(chName) {
+      if (chName === "Genel Kanal" && myJoinedChannels.length <= 1) {
+        alert("En az bir dünyada kalmalısın!");
+        return;
+      }
+      myJoinedChannels = myJoinedChannels.filter(c => c !== chName);
+      if (currentRoom === chName) {
+        leaveCurrentChannel();
+      }
+      renderServerSidebar();
+      renderWorldsManagerList();
+    }
+
+    function settingsDeleteWorld(chName) {
+      if (confirm(`"${chName}" dünyasını kalıcı olarak silmek istediğine emin misin?`)) {
+        socket.emit('delete-channel', { channelName: chName, requestingUser: username });
+        socket.once('channel-delete-result', (res) => {
+          if (res.success) {
+            myJoinedChannels = myJoinedChannels.filter(c => c !== chName);
+            if (currentRoom === chName) leaveCurrentChannel();
+            renderWorldsManagerList();
+          } else {
+            alert(res.message);
+          }
+        });
+      }
+    }
+
+    async function loadAudioDevices() {
+      const select = document.getElementById('audioSourceSelect');
+      if (!select) return;
+      select.innerHTML = "";
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        audioInputs.forEach(device => {
+          const opt = document.createElement('option');
+          opt.value = device.deviceId;
+          opt.text = device.label || `Mikrofon (${select.length + 1})`;
+          select.appendChild(opt);
+        });
+      } catch (e) {}
+    }
+
+    function updateUsernameAction() {
+      const newU = document.getElementById('settingsUsernameInput').value.trim();
+      const err = document.getElementById('settingsErrorMsg');
+      if (!newU) return;
+      socket.emit('update-username', { oldUsername: username, newUsername: newU });
+      socket.once('settings-action-result', (res) => {
+        err.style.color = res.success ? "#23a55a" : "#fa777c";
+        err.innerText = res.message;
+        if (res.success) {
+          username = res.newUsername;
+          document.getElementById('userInfoDisplay').innerText = username;
+        }
+      });
+    }
+
+    function updateStatusAction() {
+      const statusText = document.getElementById('settingsStatusInput').value.trim();
+      const err = document.getElementById('settingsErrorMsg');
+      socket.emit('update-status', { username: username, status: statusText });
+      socket.once('settings-action-result', (res) => {
+        err.style.color = "#23a55a";
+        err.innerText = res.message;
+        userStatus = statusText;
+        document.getElementById('userStatusDisplay').innerText = userStatus;
+      });
+    }
+
+    function updatePasswordAction() {
+      const oldP = document.getElementById('oldPassInput').value.trim();
+      const newP = document.getElementById('newPassInput').value.trim();
+      const newPConf = document.getElementById('newPassConfirmInput').value.trim();
+      const err = document.getElementById('settingsErrorMsg');
+      
+      if (!oldP || !newP || !newPConf) {
+        err.style.color = "#fa777c";
+        err.innerText = "Lütfen tüm şifre alanlarını doldur!";
+        return;
+      }
+      if (newP !== newPConf) {
+        err.style.color = "#fa777c";
+        err.innerText = "Yeni şifreler birbiriyle uyuşmuyor!";
+        return;
+      }
+
+      socket.emit('update-password', { username: username, oldPassword: oldP, newPassword: newP });
+      socket.once('settings-action-result', (res) => {
+        err.style.color = res.success ? "#23a55a" : "#fa777c";
+        err.innerText = res.message;
+        if (res.success) {
+          document.getElementById('oldPassInput').value = "";
+          document.getElementById('newPassInput').value = "";
+          document.getElementById('newPassConfirmInput').value = "";
+        }
+      });
+    }
+
+    function toggleAdminDashboard(show) {
+      document.getElementById('adminDashboardOverlay').style.display = show ? "flex" : "none";
+      if (show) {
+        const pendingSec = document.getElementById('pendingSectionContainer');
+        const allSec = document.getElementById('allUsersSectionContainer');
+        pendingSec.style.display = "block";
+        allSec.style.display = "block";
+        renderAdminDashboard();
+      }
+    }
+
+    function logoutUser() { location.reload(); }
+
+    function getBadgeClass(badge) {
+      if (badge === 'idle') return 'status-idle';
+      if (badge === 'dnd') return 'status-dnd';
+      if (badge === 'offline') return 'status-offline';
+      return 'status-online';
+    }
+
+    function updateUserAvatarDisplay() {
+      const avatarContainer = document.getElementById('userAvatarDisplay');
+      const badgeCls = getBadgeClass(userStatusBadge);
+      const innerHtml = userAvatar 
+        ? `<img src="${userAvatar}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">` 
+        : (username ? username.charAt(0).toUpperCase() : "👤");
+
+      avatarContainer.innerHTML = `
+        <div class="status-badge-wrapper" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
+          ${innerHtml}
+          <div class="status-dot ${badgeCls}"></div>
+        </div>
+      `;
+    }
+
+    function uploadAvatar(element) {
+      const file = element.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        userAvatar = e.target.result;
+        updateUserAvatarDisplay();
+        if (socket) {
+          socket.emit('update-avatar', { username: username, avatar: userAvatar });
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function triggerGlobalBirthdayCelebration() {
+      if (!socket || !currentRoom) return alert("Önce bir odada olmalısın!");
+      socket.emit('trigger-birthday-celebration', { roomId: currentRoom, adminUser: username });
+    }
+
+    function runBirthdayCelebrationEffects() {
+      playDiscordSound('mention');
+      const overlay = document.getElementById('celebrationOverlay');
+      overlay.style.display = 'flex';
+
+      const colors = ['#eb459e', '#5865f2', '#23a55a', '#f0b232', '#ff4757', '#ffffff'];
+      for (let i = 0; i < 90; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti-piece';
+        confetti.style.left = `${Math.random() * 100}vw`;
+        confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        confetti.style.animationDuration = `${2 + Math.random() * 2}s`;
+        confetti.style.animationDelay = `${Math.random() * 0.8}s`;
+        overlay.appendChild(confetti);
+      }
+
+      setTimeout(() => {
+        overlay.style.display = 'none';
+        const pieces = overlay.querySelectorAll('.confetti-piece');
+        pieces.forEach(p => p.remove());
+      }, 5000);
+    }
+
+    function playDiscordSound(type) {
+      if (!sfxEnabled) return;
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const volMultiplier = sfxVolume;
+
+        if (type === 'join') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12);
+          gain.gain.setValueAtTime(0.08 * volMultiplier, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.12);
+        } else if (type === 'leave') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(660, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(220, audioCtx.currentTime + 0.15);
+          gain.gain.setValueAtTime(0.08 * volMultiplier, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.15);
+        } else if (type === 'message') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.06 * volMultiplier, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.08);
+        } else if (type === 'mention') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.18);
+          gain.gain.setValueAtTime(0.12 * volMultiplier, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.18);
+        }
+      } catch (e) {}
+    }
+
+    function triggerSound(soundType) {
+      if (!isConnected) return;
+      socket.emit('play-soundboard', { roomId: currentRoom, username: username, soundType: soundType });
+      playLocalSoundEffect(soundType);
+    }
+
+    function playLocalSoundEffect(soundType) {
+      if (!sfxEnabled) return;
+      try {
+        if (soundType === 'airhorn') {
+          const iframe = document.getElementById('airhornAudioFrame');
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+            setTimeout(() => {
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*');
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0] }), '*');
+            }, 3000);
+          }
+          return;
+        }
+
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = ctx.currentTime;
+        const vol = sfxVolume;
+
+        if (soundType === 'applause') {
+          for (let i = 0; i < 5; i++) {
+            let bufferSize = ctx.sampleRate * 0.05;
+            let buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            let output = buffer.getChannelData(0);
+            for (let j = 0; j < bufferSize; j++) { output[j] = Math.random() * 2 - 1; }
+            let noise = ctx.createBufferSource();
+            noise.buffer = buffer;
+            let filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 1000;
+            let gain = ctx.createGain();
+            let startTime = now + i * 0.08 + Math.random() * 0.03;
+            gain.gain.setValueAtTime(0.3 * vol, startTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.04);
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            noise.start(startTime);
+          }
+        } else if (soundType === 'badtiss') {
+          let osc = ctx.createOscillator();
+          let gain = ctx.createGain();
+          osc.frequency.setValueAtTime(150, now);
+          osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+          gain.gain.setValueAtTime(0.4 * vol, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.15);
+        }
+      } catch(e) {}
+    }
+
+    function handleAuthAction() {
+      const user = document.getElementById('userInput').value.trim();
+      const pass = document.getElementById('passInput').value.trim();
+      const errorMsg = document.getElementById('errorMsg');
+
+      if (!user || !pass) {
+        errorMsg.style.color = "#fa777c";
+        errorMsg.innerText = "Kullanıcı adı ve şifre zorunludur!";
+        errorMsg.style.display = "block";
+        return;
+      }
+
+      errorMsg.style.color = "#f0b232";
+      errorMsg.innerText = "Sunucuyla bağlantı kuruluyor...";
+      errorMsg.style.display = "block";
+
+      if (isRegisterMode) {
+        socket.emit('register-user', { username: user, password: pass });
+        socket.once('register-result', (res) => {
+          errorMsg.style.color = res.success ? "#23a55a" : "#fa777c";
+          errorMsg.innerText = res.message;
+          errorMsg.style.display = "block";
+        });
+      } else {
+        socket.emit('auth-check', { username: user, password: pass });
+        socket.once('auth-result', (result) => {
+          if (result.success) {
+            username = user;
+            userAvatar = result.avatar || "";
+            userStatus = result.status || "";
+            userBanner = result.banner || "";
+            userBirthday = result.birthday || "";
+            userBio = result.bio || "";
+            isAdminUser = result.isAdmin;
+            myFriends = result.friends || [];
+            myRequests = result.friendRequests || [];
+            myJoinedChannels = result.joinedChannels || [];
+
+            document.getElementById('authOverlay').style.display = "none";
+            document.getElementById('userInfoDisplay').innerText = username;
+            document.getElementById('userStatusDisplay').innerText = userStatus;
+            updateUserAvatarDisplay();
+
+            if (isAdminUser || username.toLowerCase() === 'admin' || username.toLowerCase() === 'memo') {
+              document.getElementById('adminDashBtn').style.display = "block";
+              document.getElementById('adminBirthdayBoxBtn').style.display = "block";
+              pendingUsersArray = result.pendingUsers || [];
+              cachedAllUsers = result.allUsers || {};
+            }
+
+            cachedChannels = result.channels || {};
+            renderServerSidebar();
+            renderCategoryChannels();
+            renderFriendsList();
+
+            if (localStorage.getItem('memoWeatherActive') === 'true') {
+              applyAtmosphereEffect(localStorage.getItem('memoWeatherCode') || 0, localStorage.getItem('memoWeatherDay') || 1);
+            }
+
+            initPeerConnection();
+            setupSocketListeners();
+
+            const pendingInvite = localStorage.getItem('pendingInvite');
+            if (pendingInvite && cachedChannels[pendingInvite]) {
+              localStorage.removeItem('pendingInvite');
+              selectChannel(pendingInvite);
+            }
+          } else {
+            errorMsg.style.color = "#fa777c";
+            errorMsg.innerText = result.message || "Giriş başarısız!";
+            errorMsg.style.display = "block";
+          }
+        });
+      }
+    }
+
+    function renderServerSidebar() {
+      const container = document.getElementById('serverSidebarContainer');
+      let html = "";
+
+      for (let chName in cachedChannels) {
+        if (!myJoinedChannels.includes(chName)) continue;
+
+        const chData = cachedChannels[chName];
+        const isCurrent = (currentRoom === chName && !isDM);
+        const activeClass = isCurrent ? "active" : "";
+        const iconSymbol = chData.type === 'Oyun Kanalı' ? '🎮' : chData.type === 'Arkadaş Kanalı' ? '👥' : chData.type === 'Sevgili Kanalı' ? '❤️' : chData.type === 'Metin Kanalı' ? '💬' : '🔊';
+        const hasPass = chData.password && chData.password !== "";
+        const isLocked = chData.locked;
+        let badges = "";
+        if (isLocked) badges += "🔐 ";
+        else if (hasPass) badges += "🔒 ";
+
+        html += `
+          <div class="server-icon ${activeClass}" title="${chName}" onclick="selectChannel('${chName}')" oncontextmenu="openChannelContextMenu(event, '${chName}')">
+            ${badges}${iconSymbol}
+          </div>
+        `;
+      }
+
+      html += `<div class="server-separator"></div>`;
+      html += `
+        <div class="server-icon add-btn" title="Yeni Dünya / Kanal Oluştur" onclick="openCreateChannelModal()">
+          +
+        </div>
+      `;
+
+      container.innerHTML = html;
+    }
+
+    function renderCategoryChannels() {
+      const group = document.getElementById('channelsListGroup');
+      let html = "";
+
+      for (let chName in cachedChannels) {
+        if (!myJoinedChannels.includes(chName)) continue;
+        const chData = cachedChannels[chName];
+        const isCurrent = (currentRoom === chName && !isDM);
+        const activeClass = isCurrent ? "active" : "";
+        const type = chData.type || 'Ses Kanalı';
+        const hasPass = chData.password && chData.password !== "";
+        const isLocked = chData.locked;
+        let badges = "";
+        if (isLocked) badges += "🔐 ";
+        else if (hasPass) badges += "🔒 ";
+        const symbol = type === 'Metin Kanalı' ? '💬' : '🔊';
+
+        html += `
+          <div class="channel-item-row ${activeClass}" onclick="selectChannel('${chName}')" oncontextmenu="openChannelContextMenu(event, '${chName}')">
+            <span>${symbol} ${badges}${chName}</span>
+            <span style="font-size:10px; color:var(--text-muted); cursor:pointer;" onclick="event.stopPropagation(); openSubChannelModal('${chName}')" title="Alt Kanal Ekle">+</span>
+          </div>
+        `;
+
+        if (chData.subChannels && chData.subChannels.length > 0) {
+          chData.subChannels.forEach(sub => {
+            const isSubCurrent = (currentRoom === sub.name && !isDM);
+            const subActiveCls = isSubCurrent ? "active" : "";
+            const subSymbol = sub.type === 'Metin Kanalı' ? '💬' : '🔊';
+            const subLocked = sub.locked ? "🔐 " : "";
+            html += `
+              <div class="channel-item-row sub-channel-row ${subActiveCls}" onclick="selectChannel('${sub.name}')" oncontextmenu="openChannelContextMenu(event, '${sub.name}')">
+                <span>${subSymbol} ${subLocked}${sub.name}</span>
+              </div>
+            `;
+          });
+        }
+      }
+
+      group.innerHTML = html || `<div style="font-size:11px; color:var(--text-muted); padding:4px;">Kanal bulunmuyor.</div>`;
+    }
+
+    function openSubChannelModal(parentName) {
+      document.getElementById('parentChannelNameInput').value = parentName;
+      document.getElementById('subChannelParentTitle').innerText = `"${parentName}" dünyasına alt kanal ekle:`;
+      document.getElementById('subChannelNameInput').value = "";
+      document.getElementById('subChannelCapacityInput').value = "5";
+      document.getElementById('subChannelErr').innerText = "";
+      document.getElementById('createSubChannelModalOverlay').style.display = "flex";
+    }
+
+    function openSubChannelModalFromMenu() {
+      document.getElementById('channelContextMenu').style.display = 'none';
+      openSubChannelModal(targetSelectedChannel);
+    }
+
+    function submitSubChannelCreation() {
+      const parentName = document.getElementById('parentChannelNameInput').value;
+      const subType = document.getElementById('subChannelTypeSelect').value;
+      const subName = document.getElementById('subChannelNameInput').value.trim();
+      const capacity = document.getElementById('subChannelCapacityInput').value;
+      const err = document.getElementById('subChannelErr');
+
+      if (!subName) {
+        err.innerText = "Alt kanal adı boş olamaz!";
+        return;
+      }
+
+      socket.emit('create-sub-channel', {
+        parentChannel: parentName,
+        subChannelName: subName,
+        subChannelType: subType,
+        maxCapacity: capacity,
+        requestingUser: username
+      });
+
+      socket.once('sub-channel-result', (res) => {
+        if (res.success) {
+          document.getElementById('createSubChannelModalOverlay').style.display = "none";
+          if (!myJoinedChannels.includes(subName)) myJoinedChannels.push(subName);
+          selectChannel(subName);
+        } else {
+          err.innerText = res.message;
+        }
+      });
+    }
+
+    function handleChannelSearchKey(e) {
+      if (e.key === 'Enter') searchAndJoinChannel();
+    }
+
+    function searchAndJoinChannel() {
+      const query = document.getElementById('channelSearchInput').value.trim().toLowerCase();
+      if (!query) return;
+
+      let foundKey = null;
+      for (let chName in cachedChannels) {
+        if (chName.toLowerCase() === query || chName.toLowerCase().includes(query)) {
+          foundKey = chName;
+          break;
+        }
+        const chData = cachedChannels[chName];
+        if (chData.subChannels) {
+          const sub = chData.subChannels.find(s => s.name.toLowerCase() === query || s.name.toLowerCase().includes(query));
+          if (sub) {
+            foundKey = sub.name;
+            break;
+          }
+        }
+      }
+
+      if (foundKey) {
+        document.getElementById('channelSearchInput').value = "";
+        selectChannel(foundKey);
+      } else {
+        alert("Bu isimde bir kanal bulunamadı!");
+      }
+    }
+
+    function openCreateChannelModal() {
+      document.getElementById('newChannelNameInput').value = "";
+      document.getElementById('newChannelCapacityInput').value = "2";
+      document.getElementById('newChannelPassInput').value = "";
+      document.getElementById('channelCreateErr').style.display = "none";
+      document.getElementById('createChannelModalOverlay').style.display = "flex";
+    }
+
+    function submitNewChannelCreation() {
+      const type = document.getElementById('newChannelTypeSelect').value;
+      const chName = document.getElementById('newChannelNameInput').value.trim();
+      const capacity = document.getElementById('newChannelCapacityInput').value;
+      const chPass = document.getElementById('newChannelPassInput').value.trim();
+      const err = document.getElementById('channelCreateErr');
+
+      if (!chName) {
+        err.innerText = "Dünya adı boş olamaz!";
+        err.style.display = "block";
+        return;
+      }
+
+      socket.emit('create-channel', { 
+        creatorUser: username, 
+        channelName: chName, 
+        channelPassword: chPass, 
+        channelType: type,
+        maxCapacity: capacity 
+      });
+
+      socket.once('channel-create-result', (res) => {
+        if (res.success) {
+          document.getElementById('createChannelModalOverlay').style.display = "none";
+          err.style.display = "none";
+          if (!myJoinedChannels.includes(chName)) myJoinedChannels.push(chName);
+          selectChannel(chName);
+        } else {
+          err.innerText = res.message;
+          err.style.display = "block";
+        }
+      });
+    }
+
+    function renderFriendsList() {
+      const container = document.getElementById('friendsListContainer');
+      const reqBox = document.getElementById('friendRequestsBox');
+
+      let html = "";
+      if (myFriends.length === 0) {
+        html = `<div style="font-size:11px; color:var(--text-muted); padding:4px;">Henüz arkadaşın yok.</div>`;
+      } else {
+        myFriends.forEach(f => {
+          const isActiveDM = (isDM && currentRoom === getDMRoomName(username, f));
+          html += `<button class="friend-btn ${isActiveDM ? 'active' : ''}" onclick="openDirectMessage('${f}')">👤 ${f}</button>`;
+        });
+      }
+      container.innerHTML = html;
+
+      if (myRequests.length > 0) {
+        let reqHtml = `<b>Gelen İstekler:</b><br>`;
+        myRequests.forEach(req => {
+          reqHtml += `${req} <span style="cursor:pointer; color:#23a55a; font-weight:bold;" onclick="respondRequest('${req}', true)">[Kabul]</span> <span style="cursor:pointer; color:#da373c; font-weight:bold;" onclick="respondRequest('${req}', false)">[Red]</span><br>`;
+        });
+        reqBox.innerHTML = reqHtml;
+        reqBox.style.display = "block";
+      } else {
+        reqBox.style.display = "none";
+      }
+    }
+
+    function sendFriendRequest() {
+      const target = document.getElementById('friendUsernameInput').value.trim();
+      const msg = document.getElementById('friendModalMsg');
+      if (!target) return;
+
+      socket.emit('send-friend-request', { sender: username, targetUser: target });
+      socket.once('friend-action-result', (res) => {
+        msg.style.color = res.success ? "#23a55a" : "#fa777c";
+        msg.innerText = res.message;
+        if (res.success) {
+          setTimeout(() => { document.getElementById('addFriendModalOverlay').style.display = 'none'; }, 1500);
+        }
+      });
+    }
+
+    function respondRequest(sender, accept) {
+      socket.emit('respond-friend-request', { username: username, sender: sender, accept: accept });
+      socket.once('friend-response-result', (res) => {
+        myFriends = res.friends;
+        myRequests = res.requests;
+        renderFriendsList();
+      });
+    }
+
+    function getDMRoomName(u1, u2) {
+      return [u1, u2].sort().join('_DM_');
+    }
+
+    function openDirectMessage(friendName) {
+      isDM = true;
+      currentRoom = getDMRoomName(username, friendName);
+      
+      document.getElementById('chatHeaderTitle').querySelector('span').innerText = `💬 Özel Sohbet: @${friendName}`;
+      document.getElementById('currentChannelNameDisplay').innerHTML = `#${currentRoom}<br><span id="channelOwnerIndicator" style="font-size: 10px; color: #f0b232; font-weight: bold;"></span>`;
+      document.getElementById('channelSettingsHeaderBtn').style.display = 'none';
+      document.getElementById('chatMessages').innerHTML = "";
+      renderServerSidebar();
+      renderCategoryChannels();
+      renderFriendsList();
+
+      stopMusicOnBackground();
+
+      if (socket) {
+        socket.emit('join-room', currentRoom, window.myPeerId || 'noid', username);
+      }
+    }
+
+    function openChannelContextMenu(e, chName) {
+      e.preventDefault();
+      targetSelectedChannel = chName;
+      const menu = document.getElementById('channelContextMenu');
+      menu.style.top = `${e.clientY}px`;
+      menu.style.left = `${e.clientX}px`;
+      menu.style.display = 'block';
+
+      const chData = cachedChannels[chName];
+      const owner = chData ? chData.owner : "Sistem";
+      const isOwnerOrSys = (owner === username || (owner === "Sistem" && (username === "admin" || username === "memo")) || isAdminUser);
+      const userRole = (chData && chData.channelRoles && chData.channelRoles[username]) || (isOwnerOrSys ? "Kanal Sahibi" : "Üye");
+      
+      const settingsItem = document.getElementById('contextMenuSettingsItem');
+      const deleteItem = document.getElementById('contextMenuDeleteChannelItem');
+
+      if (userRole === 'Üye' || userRole === 'VIP') {
+        settingsItem.style.display = 'none';
+      } else {
+        settingsItem.style.display = 'flex';
+      }
+
+      if (isOwnerOrSys && chName !== "Genel Kanal") {
+        deleteItem.style.display = 'flex';
+      } else {
+        deleteItem.style.display = 'none';
+      }
+    }
+
+    function deleteChannelFromContextMenu() {
+      document.getElementById('channelContextMenu').style.display = 'none';
+      if (confirm(`"${targetSelectedChannel}" dünyasını kalıcı olarak silmek istediğine emin misin?`)) {
+        socket.emit('delete-channel', { channelName: targetSelectedChannel, requestingUser: username });
+        socket.once('channel-delete-result', (res) => {
+          if (res.success) {
+            if (currentRoom === targetSelectedChannel) {
+              leaveCurrentChannel();
+            }
+          } else {
+            alert(res.message);
+          }
+        });
+      }
+    }
+
+    function openVolumeModal() { document.getElementById('volumeModalOverlay').style.display = 'flex'; }
+
+    function copyInviteLink() {
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${encodeURIComponent(targetSelectedChannel)}`;
+      navigator.clipboard.writeText(inviteUrl).then(() => {
+        alert("Kanal davet linki kopyalandı!");
+      });
+    }
+
+    function openChannelSettingsModal() {
+      if (isDM) return;
+      
+      let chData = cachedChannels[currentRoom];
+      let channelOwner = "Sistem";
+      let isLocked = false;
+      
+      if (!chData) {
+        for (let mainKey in cachedChannels) {
+          const subs = cachedChannels[mainKey].subChannels || [];
+          const subMatch = subs.find(s => s.name === currentRoom);
+          if (subMatch) {
+            chData = subMatch;
+            channelOwner = subMatch.owner || cachedChannels[mainKey].owner || "Sistem";
+            isLocked = subMatch.locked || false;
+            break;
+          }
+        }
+      } else {
+        channelOwner = chData.owner || "Sistem";
+        isLocked = chData.locked || false;
+      }
+
+      const isOwner = (channelOwner === username || channelOwner === "Sistem" && (username === "admin" || username === "memo")) || isAdminUser;
+      const userRole = (chData && chData.channelRoles && chData.channelRoles[username]) || (isOwner ? "Kanal Sahibi" : "Üye");
+
+      if (userRole === 'Üye' || userRole === 'VIP') {
+        alert("Bu kanalda ayarları düzenleme yetkiniz yok (Yalnızca Moderatör ve Kanal Sahibi düzenleyebilir).");
+        return;
+      }
+
+      document.getElementById('channelSettingsTitle').innerText = `⚙️ #${currentRoom} Ayarları`;
+      document.getElementById('channelSettingsSubDesc').innerText = `Kanal Sahibi: ${channelOwner}`;
+
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${encodeURIComponent(currentRoom)}`;
+      document.getElementById('modalInviteLinkInput').value = inviteUrl;
+
+      const lockBtn = document.getElementById('channelLockButton');
+      lockBtn.innerText = isLocked ? "🔓 Odanın Kilidini Aç" : "🔒 Odayı Kilitle (Gizli Oda)";
+      lockBtn.style.background = isLocked ? "#da373c" : "#5865f2";
+
+      const deleteSection = document.getElementById('channelDeleteSectionContainer');
+      if (isOwner && currentRoom !== "Genel Kanal") {
+        deleteSection.style.display = "block";
+      } else {
+        deleteSection.style.display = "none";
+      }
+
+      document.getElementById('channelSettingsModalOverlay').style.display = 'flex';
+    }
+
+    function toggleCurrentChannelLock() {
+      socket.emit('toggle-channel-lock', { channelName: currentRoom, requestingUser: username });
+      socket.once('channel-lock-result', (res) => {
+        if (res.success) {
+          openChannelSettingsModal();
+        } else {
+          alert(res.message);
+        }
+      });
+    }
+
+    function clearChannelMessages(duration) {
+      let confirmText = "Son 1 günün mesajlarını silmek istediğine emin misin?";
+      if (duration === '1week') confirmText = "Son 1 haftanın mesajlarını silmek istediğine emin misin?";
+      if (duration === 'all') confirmText = "Kanaldaki TÜM mesajları silmek istediğine emin misin?";
+
+      if (confirm(confirmText)) {
+        socket.emit('clear-channel-messages', { channelName: currentRoom, duration: duration, requestingUser: username });
+        socket.once('clear-messages-result', (res) => {
+          if (res.success) {
+            document.getElementById('chatMessages').innerHTML = "";
+            alert(res.message);
+            document.getElementById('channelSettingsModalOverlay').style.display = 'none';
+          } else {
+            alert(res.message);
+          }
+        });
+      }
+    }
+
+    function deleteCurrentChannelAction() {
+      if (confirm(`"${currentRoom}" kanalını/dünyasını ve tüm verilerini kalıcı olarak silmek istediğine emin misin?`)) {
+        socket.emit('delete-channel', { channelName: currentRoom, requestingUser: username });
+        socket.once('channel-delete-result', (res) => {
+          if (res.success) {
+            document.getElementById('channelSettingsModalOverlay').style.display = 'none';
+            leaveCurrentChannel();
+          } else {
+            alert(res.message);
+          }
+        });
+      }
+    }
+
+    function checkUserChannelPermissions() {
+      if (isDM) {
+        const headerBtn = document.getElementById('channelSettingsHeaderBtn');
+        if (headerBtn) headerBtn.style.display = 'none';
+        return;
+      }
+      const settingsBtn = document.getElementById('channelSettingsHeaderBtn');
+      if (settingsBtn) {
+        settingsBtn.style.display = 'block';
+      }
+    }
+
+    function changeChannelVolume(val) {
+      document.getElementById('volumeValueText').innerText = val;
+      if (remoteAudioElement && !isDeafened) remoteAudioElement.volume = val / 100;
+    }
+
+    function renderAdminDashboard() {
+      if (!isAdminUser) return;
+      document.getElementById('pendingCountBadge').innerText = pendingUsersArray.length;
+      const pendingContainer = document.getElementById('pendingListContainer');
+      if (pendingUsersArray.length === 0) {
+        pendingContainer.innerHTML = "Bekleyen üyelik yok.";
+      } else {
+        let html = "";
+        pendingUsersArray.forEach(u => {
+          html += `
+            <div class="dash-row">
+              <span>👤 ${u}</span>
+              <button class="approve-btn" onclick="approveUser('${u}')">Onayla</button>
+            </div>
+          `;
+        });
+        pendingContainer.innerHTML = html;
+      }
+
+      const allContainer = document.getElementById('allUsersListContainer');
+      let allHtml = "";
+      for (let uName in cachedAllUsers) {
+        const uData = cachedAllUsers[uName];
+        if (!uData.approved) continue;
+        const isActive = cachedActiveUsers.includes(uName);
+        const isBanned = uData.banned;
+        
+        const badge = isBanned 
+          ? `<span style="font-size:10px; color:#da373c; font-weight:bold;">Banlı (${uData.banType || 'Kalıcı'})</span>` 
+          : (isActive ? '<span class="badge-active">Aktif</span>' : '<span class="badge-offline">Çevrimdışı</span>');
+        
+        let actionBtn = "";
+        if (uName.toLowerCase() !== 'admin' && uName.toLowerCase() !== 'memo') {
+          if (isBanned) {
+            actionBtn = `<button class="unban-btn" onclick="unbanUser('${uName}')">Banı Kaldır</button>`;
+          } else {
+            actionBtn = `<button class="ban-btn" onclick="openBanModal('${uName}')">Banla</button>`;
+          }
+        }
+        
+        allHtml += `
+          <div class="dash-row">
+            <span>👤 ${uName}</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              ${badge}
+              ${actionBtn}
+            </div>
+          </div>
+        `;
+      }
+      allContainer.innerHTML = allHtml;
+    }
+
+    function openBanModal(targetUser) {
+      document.getElementById('targetBanUsername').value = targetUser;
+      document.getElementById('banTargetUserLabel').innerText = `"${targetUser}" adlı kullanıcı için ban süresi seçin:`;
+      document.getElementById('banDurationModalOverlay').style.display = 'flex';
+    }
+
+    function submitBanAction() {
+      const targetUser = document.getElementById('targetBanUsername').value;
+      const duration = document.getElementById('banDurationSelect').value;
+
+      socket.emit('ban-user-timed', { adminUser: username, targetUser: targetUser, duration: duration });
+      document.getElementById('banDurationModalOverlay').style.display = 'none';
+      if (cachedAllUsers[targetUser]) {
+        cachedAllUsers[targetUser].banned = true;
+        cachedAllUsers[targetUser].banType = duration;
+      }
+      renderAdminDashboard();
+    }
+
+    function unbanUser(targetUser) {
+      socket.emit('unban-user', { adminUser: username, targetUser: targetUser });
+      if (cachedAllUsers[targetUser]) {
+        cachedAllUsers[targetUser].banned = false;
+        cachedAllUsers[targetUser].banType = null;
+      }
+      renderAdminDashboard();
+    }
+
+    function approveUser(targetUser) {
+      socket.emit('approve-user', { adminUser: username, targetUser: targetUser });
+      pendingUsersArray = pendingUsersArray.filter(u => u !== targetUser);
+      if (cachedAllUsers[targetUser]) cachedAllUsers[targetUser].approved = true;
+      renderAdminDashboard();
+    }
+
+    function initPeerConnection() {
+      peer = new Peer(undefined, {
+        host: window.location.hostname,
+        port: window.location.port || (window.location.protocol === 'https:' ? 443 : 80),
+        path: '/peerjs',
+        secure: window.location.protocol === 'https:',
+        config: { 
+          'iceServers': [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ] 
+        }
+      });
+
+      peer.on('open', id => { window.myPeerId = id; });
+      peer.on('disconnected', () => { peer.reconnect(); });
+
+      peer.on('call', call => {
+        const streamToSend = getActiveStreamToSend();
+        call.answer(streamToSend);
+        call.on('stream', remoteStream => {
+          activeCalls[call.peer] = call;
+          handleIncomingStream(remoteStream, call.peer);
+        });
+        call.on('close', () => {
+          removeRemoteStreamElement(call.peer);
+        });
+      });
+    }
+
+    function getActiveStreamToSend() {
+      if (isScreenSharing && screenStream) {
+        const combined = new MediaStream();
+        screenStream.getVideoTracks().forEach(track => combined.addTrack(track));
+        
+        if (screenStream.getAudioTracks().length > 0) {
+          screenStream.getAudioTracks().forEach(track => combined.addTrack(track));
+        } else if (localStream && localStream.getAudioTracks().length > 0 && isMicOn) {
+          localStream.getAudioTracks().forEach(track => combined.addTrack(track));
+        }
+        return combined;
+      }
+      return cameraStream || localStream;
+    }
+
+    function setupSocketListeners() {
+      socket.on('new-pending-user', (newU) => {
+        if (isAdminUser) {
+          pendingUsersArray.push(newU);
+          if (cachedAllUsers[newU]) cachedAllUsers[newU].approved = false;
+          else cachedAllUsers[newU] = { approved: false };
+          renderAdminDashboard();
+        }
+      });
+
+      socket.on('user-approved', (approvedUser) => {
+        if (approvedUser === username) {
+          alert("Tebrikler! Hesabın onaylandı. Artık kanallara katılabilirsin.");
+        }
+      });
+
+      socket.on('channel-role-updated', (data) => {
+        if (data.channelName === currentRoom) {
+          alert(`Bu kanaldaki rolün "${data.newRole}" olarak güncellendi!`);
+          updateUserListUI();
+          checkUserChannelPermissions();
+        }
+      });
+
+      socket.on('user-banned', () => {
+        alert("Yönetici tarafından banlandın!");
+        location.reload();
+      });
+
+      socket.on('unauthorized-action', (msg) => {
+        alert(msg);
+        leaveCurrentChannel();
+      });
+
+      socket.on('update-channels', (channels) => {
+        cachedChannels = channels;
+        renderServerSidebar();
+        renderCategoryChannels();
+        renderWorldsManagerList();
+        if (isConnected && !isDM) {
+          updateUserListUI();
+          checkUserChannelPermissions();
+        }
+      });
+
+      socket.on('friend-request-received', (data) => {
+        if (data.targetUser === username) {
+          if (!myRequests.includes(data.sender)) myRequests.push(data.sender);
+          renderFriendsList();
+          playDiscordSound('message');
+          showDesktopNotification("👥 Yeni Arkadaşlık İsteği", `${data.sender} sana arkadaşlık isteği gönderdi!`);
+        }
+      });
+
+      socket.on('user-status-changed', (data) => {
+        if (data.username === remoteUsername) {
+          updateUserListUI();
+        }
+      });
+
+      socket.on('update-active-users', (activeMap) => {
+        cachedActiveUsers = activeMap[currentRoom] || [];
+        if (isAdminUser) renderAdminDashboard();
+        updateUserListUI();
+      });
+
+      socket.on('user-avatar-changed', (data) => {
+        if (data.username === remoteUsername) {
+          remoteAvatar = data.avatar;
+          updateUserListUI();
+        }
+      });
+
+      socket.on('load-chat-history', (history) => {
+        const chatBox = document.getElementById('chatMessages');
+        chatBox.innerHTML = "";
+        history.forEach(item => {
+          appendMessage(item.user, item.avatar, item.message, item.file, item.poll, item.timestamp, item.id);
+        });
+      });
+
+      socket.on('trigger-soundboard', (data) => {
+        playLocalSoundEffect(data.soundType);
+        appendSystemMessage(`🔊 ${data.username} bir ses efekti çaldı!`);
+      });
+
+      socket.on('run-birthday-celebration-client', () => {
+        runBirthdayCelebrationEffects();
+        appendSystemMessage(`🎉 Admin tarafından doğum günü kutlaması başlatıldı! İyi ki varsın! 💖`);
+      });
+
+      socket.on('receive-poke-notification', (data) => {
+        let icon = '💖';
+        if (data.messageText.includes('özledim')) icon = '🥰';
+        else if (data.messageText.includes('düşünüyorum')) icon = '✨';
+        else if (data.messageText.includes('İyi ki')) icon = '♾️';
+
+        triggerPokeAnimation(icon, data.sender, data.messageText);
+        appendSystemMessage(`💌 @${data.sender} sana sürpriz gönderdi: "${data.messageText}"`);
+      });
+
+      socket.on('bot-play-music', (data) => {
+        isMusicPlaying = true;
+        playMusicOnBackground(data.videoId, data.query);
+        appendSystemMessage(`🎶 Müzik Botu: "${data.query}" çalınıyor (İsteyen: @${data.requestedBy})`);
+      });
+
+      socket.on('bot-stop-music', (data) => {
+        isMusicPlaying = false;
+        stopMusicOnBackground();
+        appendSystemMessage(`🛑 Müzik Botu: Müzik durduruldu (Durduran: @${data.stoppedBy})`);
+      });
+
+      socket.on('trigger-watch-party-poll', (data) => {
+        document.getElementById('wpPollDesc').innerText = `${data.requestedBy} videoyu kapatmak/değiştirmek istiyor. Kararınız nedir?`;
+        document.getElementById('wpPollModalOverlay').style.display = 'flex';
+      });
+
+      socket.on('watch-party-poll-result', (data) => {
+        document.getElementById('wpPollModalOverlay').style.display = 'none';
+        if (data.action === 'close') {
+          alert("Anket sonucu: Kapatıldı! Yeni bir video linki yükleyebilirsiniz.");
+          closeWatchPartyPlayerCompletely();
+        } else {
+          alert(`Anket sonucu: Devam Et (Kapat: ${data.closeCount}, Devam: ${data.continueCount}). Video oynatılmaya devam ediyor.`);
+        }
+      });
+
+      socket.on('user-typing', (data) => {
+        const ind = document.getElementById('typingIndicator');
+        ind.innerHTML = `${data.username} yazıyor <div class="typing-dots"><span></span><span></span><span></span></div>`;
+      });
+
+      socket.on('user-stop-typing', (data) => {
+        document.getElementById('typingIndicator').innerHTML = "";
+      });
+
+      socket.on('user-connected', (userId, rName, rAvatar) => {
+        playDiscordSound('join');
+        if (rName) {
+          remoteUsername = rName;
+          remoteAvatar = rAvatar || "";
+        }
+        appendSystemMessage(`${remoteUsername} kanala katıldı.`);
+        updateUserListUI();
+
+        setTimeout(() => {
+          const streamToSend = getActiveStreamToSend();
+          if (streamToSend && userId && userId !== window.myPeerId) {
+            const call = peer.call(userId, streamToSend);
+            activeCalls[userId] = call;
+            call.on('stream', remoteStream => {
+              handleIncomingStream(remoteStream, userId, remoteUsername);
+            });
+            call.on('close', () => {
+              removeRemoteStreamElement(userId);
+            });
+          }
+        }, 200);
+      });
+
+      socket.on('user-disconnected', (userId) => {
+        playDiscordSound('leave');
+        appendSystemMessage(`Bir kullanıcı kanaldan ayrıldı.`);
+        if (activeCalls[userId]) {
+          activeCalls[userId].close();
+          delete activeCalls[userId];
+        }
+        removeRemoteStreamElement(userId);
+        updateUserListUI();
+      });
+
+      socket.on('receive-message', (data) => {
+        appendMessage(data.user, data.avatar, data.message, data.file, data.poll, data.timestamp, data.id);
+        
+        const isMentioned = data.message && data.message.includes(`@${username}`);
+        if (data.user !== username) {
+          if (isMentioned) {
+            playDiscordSound('mention');
+            showDesktopNotification(`🔔 Etiketlendin: ${data.user}`, data.message);
+          } else {
+            playDiscordSound('message');
+            if (!document.hasFocus() || document.hidden) {
+              showDesktopNotification(`💬 Yeni Mesaj: ${data.user}`, data.message || "Bir dosya paylaştı.");
+            }
+          }
+        }
+      });
+
+      socket.on('receive-video-sync', (data) => {
+        if (data.action === 'load') {
+          document.getElementById('watchPartyModalOverlay').style.display = 'flex';
+          document.getElementById('watchPartyUrlInput').value = data.videoUrl;
+          renderWatchPartyPlayer(data.videoUrl, data.owner);
+        } else {
+          if (username !== watchPartyOwner) {
+            const videoEl = document.getElementById('wpVideoElement');
+            if (videoEl) {
+              isSyncing = true;
+              if (Math.abs(videoEl.currentTime - data.currentTime) > 1.5) {
+                videoEl.currentTime = data.currentTime;
+              }
+              if (data.action === 'play') videoEl.play();
+              if (data.action === 'pause') videoEl.pause();
+              setTimeout(() => { isSyncing = false; }, 200);
+            }
+          }
+        }
+      });
+    }
+
+    let isSyncing = false;
+
+    function playMusicOnBackground(videoId, title) {
+      const container = document.getElementById('hiddenMusicPlayerContainer');
+      container.innerHTML = `
+        <iframe width="0" height="0" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1" 
+          frameborder="0" allow="autoplay"></iframe>
+      `;
+    }
+
+    function stopMusicOnBackground() {
+      const container = document.getElementById('hiddenMusicPlayerContainer');
+      container.innerHTML = "";
+    }
+
+    function openWatchPartyModal() {
+      if (!currentRoom) return alert("Önce bir odaya katılmalısın!");
+      document.getElementById('watchPartyModalOverlay').style.display = 'flex';
+    }
+
+    function closeWatchPartyModal() {
+      document.getElementById('watchPartyModalOverlay').style.display = 'none';
+    }
+
+    function requestCloseWatchParty() {
+      if (!currentRoom) return;
+      socket.emit('request-close-watch-party', { roomId: currentRoom, username: username });
+      alert("Odadaki kullanıcılara anket gönderildi, oylama bekleniyor...");
+    }
+
+    function submitWpPollVote(vote) {
+      document.getElementById('wpPollModalOverlay').style.display = 'none';
+      socket.emit('vote-watch-party-poll', { roomId: currentRoom, vote: vote, username: username });
+    }
+
+    function closeWatchPartyPlayerCompletely() {
+      const container = document.getElementById('watchPartyContainer');
+      container.innerHTML = `<span style="color: var(--text-muted); font-size: 13px;">Henüz bir video yüklenmedi.</span>`;
+      watchPartyOwner = "";
+      document.getElementById('watchPartyStatusText').innerText = "Durum: Kapalı";
+    }
+
+    function loadWatchPartyMedia() {
+      const urlInput = document.getElementById('watchPartyUrlInput').value.trim();
+      if (!urlInput) return alert("Lütfen geçerli bir video linki gir!");
+      
+      watchPartyOwner = username;
+
+      socket.emit('sync-video-action', {
+        roomId: currentRoom,
+        action: 'load',
+        videoUrl: urlInput,
+        owner: username,
+        currentTime: 0
+      });
+
+      renderWatchPartyPlayer(urlInput, username);
+    }
+
+    function renderWatchPartyPlayer(url, owner) {
+      watchPartyOwner = owner || watchPartyOwner;
+      const container = document.getElementById('watchPartyContainer');
+      const isOwner = (username === watchPartyOwner);
+      const controlsAttr = isOwner ? 'controls' : '';
+
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        let videoId = "";
+        if (url.includes('watch?v=')) {
+          videoId = url.split('watch?v=')[1].split('&')[0];
+        } else if (url.includes('youtu.be/')) {
+          videoId = url.split('youtu.be/')[1].split('?')[0];
+        }
+
+        container.innerHTML = `
+          <iframe id="wpYoutubeIframe" src="https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1" 
+            style="width:100%; height:100%; border:none;" allow="autoplay; encrypted-media" allowfullscreen>
+          </iframe>`;
+        document.getElementById('watchPartyStatusText').innerText = `Durum: Oynatılıyor (Başlatan: ${watchPartyOwner})`;
+      } else {
+        container.innerHTML = `
+          <video id="wpVideoElement" src="${url}" ${controlsAttr} style="width:100%; height:100%; object-fit:contain;" autoplay></video>
+        `;
+        
+        const videoEl = document.getElementById('wpVideoElement');
+        if (videoEl && isOwner) {
+          videoEl.onplay = () => {
+            if (isSyncing) return;
+            socket.emit('sync-video-action', { roomId: currentRoom, action: 'play', currentTime: videoEl.currentTime });
+          };
+          videoEl.onpause = () => {
+            if (isSyncing) return;
+            socket.emit('sync-video-action', { roomId: currentRoom, action: 'pause', currentTime: videoEl.currentTime });
+          };
+          videoEl.onseeked = () => {
+            if (isSyncing) return;
+            socket.emit('sync-video-action', { roomId: currentRoom, action: 'seek', currentTime: videoEl.currentTime });
+          };
+        }
+        document.getElementById('watchPartyStatusText').innerText = `Durum: Oynatılıyor (Başlatan: ${watchPartyOwner})`;
+      }
+    }
+
+    function selectChannel(chName) {
+      if (currentRoom === chName && !isDM) return;
+
+      let foundData = cachedChannels[chName];
+      if (!foundData) {
+        for (let mainCh in cachedChannels) {
+          const subs = cachedChannels[mainCh].subChannels || [];
+          const subMatch = subs.find(s => s.name === chName);
+          if (subMatch) {
+            foundData = subMatch;
+            break;
+          }
+        }
+      }
+
+      if (!foundData) {
+        alert("Bu kanal bulunamadı veya silinmiş.");
+        return;
+      }
+
+      targetSelectedChannel = chName;
+      verifyAndSwitchChannel(chName, "");
+    }
+
+    function closeChannelPasswordModal() {
+      document.getElementById('channelPasswordOverlay').style.display = "none";
+      targetSelectedChannel = "";
+    }
+
+    function handlePasswordKeyPress(e) { if (e.key === 'Enter') verifyChannelPassword(); }
+
+    function verifyChannelPassword() {
+      const pass = document.getElementById('channelPasswordInput').value.trim();
+
+      socket.emit('verify-channel-password', { channelName: targetSelectedChannel, password: pass, username: username });
+      socket.once('channel-auth-result', (res) => {
+        if (res.success) {
+          authenticatedChannels[targetSelectedChannel] = true;
+          document.getElementById('channelPasswordOverlay').style.display = "none";
+          if (!myJoinedChannels.includes(targetSelectedChannel)) {
+            myJoinedChannels.push(targetSelectedChannel);
+          }
+          connectToChannelDirectly(targetSelectedChannel);
+        } else {
+          if (res.message.includes('şifresi')) {
+            document.getElementById('channelModalTitle').innerText = `${targetSelectedChannel} - Şifre Gir`;
+            document.getElementById('channelModalDesc').innerText = res.message;
+            document.getElementById('channelPasswordOverlay').style.display = "flex";
+          } else {
+            alert(res.message);
+            document.getElementById('channelPasswordOverlay').style.display = "none";
+          }
+        }
+      });
+    }
+
+    function verifyAndSwitchChannel(chName, pass) {
+      socket.emit('verify-channel-password', { channelName: chName, password: pass, username: username });
+      socket.once('channel-auth-result', (res) => {
+        if (res.success) {
+          if (!myJoinedChannels.includes(chName)) {
+            myJoinedChannels.push(chName);
+          }
+          connectToChannelDirectly(chName);
+        } else {
+          if (res.message.includes('şifresi') || res.message.includes('gereklidir')) {
+            document.getElementById('channelModalTitle').innerText = `${chName} - Şifre Gir`;
+            document.getElementById('channelModalDesc').innerText = res.message;
+            document.getElementById('channelPasswordInput').value = "";
+            document.getElementById('channelErrorMsg').style.display = "none";
+            document.getElementById('channelPasswordOverlay').style.display = "flex";
+          } else {
+            alert(res.message);
+          }
+        }
+      });
+    }
+
+    async function connectToChannelDirectly(chName) {
+      if (!myJoinedChannels.includes(chName)) {
+        myJoinedChannels.push(chName);
+      }
+
+      let isTextChannel = false;
+      let parentData = cachedChannels[chName];
+      if (parentData && parentData.type === 'Metin Kanalı') {
+        isTextChannel = true;
+      } else {
+        for (let mainCh in cachedChannels) {
+          const subs = cachedChannels[mainCh].subChannels || [];
+          const subMatch = subs.find(s => s.name === chName);
+          if (subMatch && subMatch.type === 'Metin Kanalı') {
+            isTextChannel = true;
+            break;
+          }
+        }
+      }
+
+      isDM = false;
+      currentRoom = chName;
+
+      stopMusicOnBackground();
+
+      socket.emit('join-room', currentRoom, window.myPeerId || 'noid', username);
+      
+      renderServerSidebar();
+      renderCategoryChannels();
+      renderFriendsList();
+      
+      document.getElementById('chatHeaderTitle').querySelector('span').innerText = `💬 #${currentRoom} Sohbeti`;
+      document.getElementById('currentChannelNameDisplay').innerHTML = `#${currentRoom} <br><span style="font-size:11px; color:var(--text-main); font-weight:normal;">👤 ${username}</span> <span id="channelOwnerIndicator" style="font-size: 10px; color: #f0b232; font-weight: bold;"></span>`;
+      
+      document.getElementById('chatMessages').innerHTML = "";
+      
+      const settingsHeaderBtn = document.getElementById('channelSettingsHeaderBtn');
+      if (settingsHeaderBtn) settingsHeaderBtn.style.display = 'block';
+
+      if (isTextChannel) {
+        document.getElementById('controlsSection').style.display = "none";
+        document.getElementById('soundboardPanel').style.display = "none";
+        document.getElementById('roomUsersSection').style.display = "block";
+        videoStage.style.display = "none";
+        emptyState.style.display = "none";
+        if (isConnected) leaveCurrentChannel();
+        updateUserListUI();
+        return;
+      }
+
+      document.getElementById('controlsSection').style.display = "flex";
+      document.getElementById('soundboardPanel').style.display = "flex";
+      document.getElementById('roomUsersSection').style.display = "block";
+
+      try {
+        const selectedAudioId = document.getElementById('audioSourceSelect').value;
+        const constraints = {
+          video: false,
+          audio: selectedAudioId ? { deviceId: { exact: selectedAudioId } } : true
+        };
+
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        isConnected = true;
+        updateUserListUI();
+        appendSystemMessage(`${username} #${currentRoom} kanalına katıldı.`);
+        playDiscordSound('join');
+      } catch (e) {
+        isConnected = true;
+        updateUserListUI();
+      }
+    }
+
+    function leaveCurrentChannel() {
+      playDiscordSound('leave');
+      stopMusicOnBackground();
+
+      if (localStream) localStream.getTracks().forEach(track => track.stop());
+      if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+      if (screenStream) screenStream.getTracks().forEach(track => track.stop());
+
+      for (let peerId in activeCalls) {
+        activeCalls[peerId].close();
+      }
+      activeCalls = {};
+      peerStreams = {};
+
+      isCamOn = false;
+      isScreenSharing = false;
+      isMusicPlaying = false;
+      isDeafened = false;
+
+      targetSelectedChannel = "";
+      document.getElementById('channelPasswordInput').value = "";
+
+      document.getElementById('deafenBtn').innerText = "🎧 Kulaklık: Açık";
+      document.getElementById('camBtn').innerText = "📷 Kamera Kapalı";
+      document.getElementById('screenBtn').style.display = "block";
+      document.getElementById('stopScreenBtn').style.display = "none";
+      
+      updateStageLayout();
+
+      isConnected = false;
+      document.getElementById('controlsSection').style.display = "none";
+      document.getElementById('soundboardPanel').style.display = "none";
+      document.getElementById('roomUsersSection').style.display = "none";
+
+      renderServerSidebar();
+      renderCategoryChannels();
+      appendSystemMessage(`${username} kanaldan ayrıldı.`);
+    }
+
+    function toggleMic() {
+      if (localStream && localStream.getAudioTracks().length > 0) {
+        isMicOn = !isMicOn;
+        localStream.getAudioTracks()[0].enabled = isMicOn;
+        document.getElementById('micBtn').innerText = isMicOn ? "🎤 Mikrofon" : "🎙️ Susturuldu";
+        updateUserListUI();
+      }
+    }
+
+    function toggleDeafen() {
+      isDeafened = !isDeafened;
+      remoteAudioElement.muted = isDeafened;
+      document.getElementById('deafenBtn').innerText = isDeafened ? "🔇 Kulaklık: Kapalı" : "🎧 Kulaklık: Açık";
+      document.getElementById('deafenBtn').style.background = isDeafened ? "#da373c" : "#4e5058";
+    }
+
+    function setupAudioVisualizer(stream, avatarElementId) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioCtx.createAnalyser();
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        function checkVolume() {
+          if (!isConnected) return;
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+          let average = sum / bufferLength;
+
+          const avatarEl = document.getElementById(avatarElementId);
+          if (avatarEl) {
+            if (average > 12) {
+              avatarEl.classList.add('speaking-avatar');
+            } else {
+              avatarEl.classList.remove('speaking-avatar');
+            }
+          }
+          requestAnimationFrame(checkVolume);
+        }
+        checkVolume();
+      } catch (e) {}
+    }
+
+    function updateUserListUI() {
+      const listDiv = document.getElementById('roomUsersList');
+      const ownerIndicator = document.getElementById('channelOwnerIndicator');
+      
+      let channelData = cachedChannels[currentRoom];
+      let channelOwner = "Sistem";
+
+      if (!channelData) {
+        for (let mainKey in cachedChannels) {
+          const subs = cachedChannels[mainKey].subChannels || [];
+          const subMatch = subs.find(s => s.name === currentRoom);
+          if (subMatch) {
+            channelData = cachedChannels[mainKey];
+            channelOwner = subMatch.owner || cachedChannels[mainKey].owner || "Sistem";
+            break;
+          }
+        }
+      } else {
+        channelOwner = channelData.owner || "Sistem";
+      }
+
+      const isUserChannelOwner = (channelOwner === username || (channelOwner === "Sistem" && (username === "admin" || username === "memo")) || isAdminUser);
+
+      if (ownerIndicator) {
+        if (isUserChannelOwner) {
+          ownerIndicator.innerText = "(Kanal Sahibisin)";
+        } else {
+          ownerIndicator.innerText = `(Sahibi: ${channelOwner})`;
+        }
+      }
+
+      let allUsersInRoom = [username];
+      if (remoteUsername && remoteUsername !== "Arkadaşın" && cachedActiveUsers.includes(remoteUsername)) {
+        if (!allUsersInRoom.includes(remoteUsername)) allUsersInRoom.push(remoteUsername);
+      }
+      cachedActiveUsers.forEach(u => {
+        if (!allUsersInRoom.includes(u)) allUsersInRoom.push(u);
+      });
+
+      let html = "";
+      allUsersInRoom.forEach(u => {
+        const isMe = (u === username);
+        const uAvatar = isMe ? userAvatar : remoteAvatar;
+        const uStatus = isMe ? userStatus : "";
+        const badgeCls = isMe ? getBadgeClass(userStatusBadge) : "status-online";
+        const isMutedUser = isMe && !isMicOn;
+
+        const avatarInner = uAvatar 
+          ? `<img src="${uAvatar}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">` 
+          : u.charAt(0).toUpperCase();
+
+        const avatarHtml = `
+          <div class="status-badge-wrapper" style="width:26px; height:26px; border-radius:50%; background:var(--accent-color); display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff;" id="user-av-${u}">
+            ${avatarInner}
+            <div class="status-dot ${badgeCls}"></div>
+          </div>
+        `;
+
+        let roleText = "Üye";
+        let roleClass = "role-uye";
+        if (channelData && channelData.channelRoles && channelData.channelRoles[u]) {
+          roleText = channelData.channelRoles[u];
+          if (roleText === "Kanal Sahibi") roleClass = "role-sahip";
+          else if (roleText === "Moderatör") roleClass = "role-mod";
+          else if (roleText === "VIP") roleClass = "role-vip";
+        } else if (u === channelOwner || (channelOwner === "Sistem" && (u === "admin" || u === "memo"))) {
+          roleText = "Kanal Sahibi";
+          roleClass = "role-sahip";
+        }
+
+        let assignBtn = "";
+        if (isUserChannelOwner && u !== username) {
+          assignBtn = `<button class="account-settings-btn" style="padding: 2px 5px; font-size: 10px; background: var(--accent-color);" onclick="openChannelRoleModal('${u}')">Rol Ver</button>`;
+        }
+
+        const micMutedBadge = isMutedUser ? `<span class="mic-muted-badge">Susturuldu</span>` : "";
+
+        html += `
+          <div class="user-list-item" onclick="showProfilePopover(event, '${u}', '${uAvatar || ''}', '${uStatus || ''}')">
+            ${avatarHtml}
+            <span>${u}</span>
+            ${micMutedBadge}
+            <span class="role-badge ${roleClass}">${roleText}</span>
+            ${assignBtn}
+          </div>
+        `;
+      });
+
+      if (isMusicPlaying) {
+        html += `
+          <div class="user-list-item">
+            <div style="width:26px; height:26px; border-radius:50%; background:#f0b232; display:flex; align-items:center; justify-content:center; font-size:12px; color:#000; font-weight:bold;">🎶</div>
+            <span>Müzik Botu</span>
+            <span class="role-badge" style="background:#f0b232; color:#000;">Bot</span>
+          </div>
+        `;
+      }
+
+      listDiv.innerHTML = html;
+    }
+
+    function openChannelRoleModal(targetUser) {
+      document.getElementById('targetRoleUsername').value = targetUser;
+      document.getElementById('roleModalUserDesc').innerText = `${targetUser} adlı kullanıcıya #${currentRoom} kanalı için rol ata:`;
+      document.getElementById('channelRoleErr').innerText = "";
+      document.getElementById('channelRoleModalOverlay').style.display = "flex";
+    }
+
+    function submitChannelRole() {
+      const targetUser = document.getElementById('targetRoleUsername').value;
+      const newRole = document.getElementById('channelRoleSelect').value;
+      const err = document.getElementById('channelRoleErr');
+
+      socket.emit('assign-channel-role', {
+        channelName: currentRoom,
+        targetUser: targetUser,
+        newRole: newRole,
+        requestingUser: username
+      });
+
+      socket.once('channel-role-result', (res) => {
+        err.style.color = res.success ? "#23a55a" : "#fa777c";
+        err.innerText = res.message;
+        if (res.success) {
+          setTimeout(() => {
+            document.getElementById('channelRoleModalOverlay').style.display = 'none';
+          }, 1200);
+        }
+      });
+    }
+
+    async function toggleCam() {
+      if (!isConnected) return alert("Önce ses kanalına katılmalısın!");
+      if (!isCamOn) {
+        try {
+          const constraints = currentVideoQuality === '1080p' 
+            ? { video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 90, max: 90 } } }
+            : { video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60, max: 60 } } };
+
+          cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+          isCamOn = true;
+          document.getElementById('camBtn').innerText = "📷 Kamera Açık";
+          updateStageLayout();
+          updateStreamToAllPeers();
+        } catch (err) { 
+          alert("Kamera bulunamadı!"); 
+        }
+      } else {
+        if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+        isCamOn = false;
+        document.getElementById('camBtn').innerText = "📷 Kamera Kapalı";
+        updateStageLayout();
+        updateStreamToAllPeers();
+      }
+    }
+
+    async function startScreenShare() {
+      if (!isConnected) return alert("Önce ses kanalına katılmalısın!");
+      try {
+        const audioConstraints = {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          suppressLocalAudioPlayback: false,
+          channelCount: 2
+        };
+
+        const videoConstraints = currentVideoQuality === '1080p'
+          ? { cursor: "always", frameRate: { ideal: 90, max: 90 }, width: { max: 1920 }, height: { max: 1080 } }
+          : { cursor: "always", frameRate: { ideal: 60, max: 60 }, width: { max: 1280 }, height: { max: 720 } };
+
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: videoConstraints,
+          audio: audioConstraints
+        });
+
+        isScreenSharing = true;
+        const videoTrack = screenStream.getVideoTracks()[0];
+        document.getElementById('screenBtn').style.display = "none";
+        document.getElementById('stopScreenBtn').style.display = "block";
+        updateStageLayout();
+
+        updateStreamToAllPeers();
+        videoTrack.onended = () => stopScreenShare();
+      } catch (e) {
+        console.error("Ekran paylaşımı hatası:", e);
+        isScreenSharing = false;
+        document.getElementById('screenBtn').style.display = "block";
+        document.getElementById('stopScreenBtn').style.display = "none";
+      }
+    }
+
+    function stopScreenShare() {
+      if (screenStream) screenStream.getTracks().forEach(track => track.stop());
+      isScreenSharing = false;
+      document.getElementById('screenBtn').style.display = "block";
+      document.getElementById('stopScreenBtn').style.display = "none";
+      updateStageLayout();
+      updateStreamToAllPeers();
+    }
+
+    function updateStreamToAllPeers() {
+      const streamToSend = getActiveStreamToSend();
+      for (let peerId in activeCalls) {
+        try {
+          const call = peer.call(peerId, streamToSend);
+          activeCalls[peerId] = call;
+          call.on('stream', remoteStream => { handleIncomingStream(remoteStream, peerId, remoteUsername); });
+        } catch (e) {}
+      }
+    }
+
+    function updateStageLayout() {
+      const stage = document.getElementById('videoStage');
+      stage.innerHTML = "";
+      
+      let hasContent = false;
+
+      if (isScreenSharing && screenStream) {
+        hasContent = true;
+        appendVideoBox(stage, 'local-screen', screenStream, `${username} (Ekran Paylaşımı)`, false);
+      }
+      if (isCamOn && cameraStream) {
+        hasContent = true;
+        appendVideoBox(stage, 'local-cam', cameraStream, `${username} (Kamera)`, false);
+      }
+
+      for (let pId in peerStreams) {
+        hasContent = true;
+        const data = peerStreams[pId];
+        appendVideoBox(stage, pId, data.stream, data.name, true);
+      }
+
+      if (hasContent) {
+        emptyState.style.display = "none";
+        stage.style.display = "grid";
+      } else {
+        stage.style.display = "none";
+        emptyState.style.display = "block";
+      }
+    }
+
+    function appendVideoBox(container, id, stream, labelText, isRemote) {
+      if (document.getElementById(`box-${id}`)) return;
+
+      const box = document.createElement('div');
+      box.className = 'video-box';
+      box.id = `box-${id}`;
+
+      box.ondblclick = () => { box.classList.toggle('spotlight'); };
+
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.id = `video-el-${id}`;
+      
+      if (!isRemote) {
+        video.muted = true;
+      } else {
+        video.muted = false;
+        video.volume = 1.0;
+      }
+
+      const label = document.createElement('div');
+      label.className = 'video-label';
+      label.innerHTML = `
+        <span>${labelText}</span>
+        ${isRemote ? `<input type="range" class="video-volume-slider" min="0" max="100" value="100" oninput="adjustVideoVolume('${id}', this.value)" title="Bu akışın sesini ayarla">` : ''}
+      `;
+
+      box.appendChild(video);
+      box.appendChild(label);
+      container.appendChild(box);
+    }
+
+    function adjustVideoVolume(id, val) {
+      const videoEl = document.getElementById(`video-el-${id}`);
+      if (videoEl) {
+        videoEl.volume = val / 100;
+      }
+    }
+
+    function removeVideoBox(id) {
+      const box = document.getElementById(`box-${id}`);
+      if (box) box.remove();
+      updateStageLayout();
+    }
+
+    function handleIncomingStream(stream, peerId, senderName) {
+      peerStreams[peerId] = { stream: stream, name: senderName || remoteUsername };
+      updateStageLayout();
+
+      if (stream.getAudioTracks().length > 0) {
+        try {
+          if (!remoteAudioCtx) {
+            remoteAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (remoteAudioCtx.state === 'suspended') {
+            remoteAudioCtx.resume();
+          }
+
+          const source = remoteAudioCtx.createMediaStreamSource(stream);
+          const compressor = remoteAudioCtx.createDynamicsCompressor();
+          
+          compressor.threshold.setValueAtTime(-24, remoteAudioCtx.currentTime);
+          compressor.knee.setValueAtTime(30, remoteAudioCtx.currentTime);
+          compressor.ratio.setValueAtTime(12, remoteAudioCtx.currentTime);
+          compressor.attack.setValueAtTime(0.003, remoteAudioCtx.currentTime);
+          compressor.release.setValueAtTime(0.25, remoteAudioCtx.currentTime);
+
+          source.connect(compressor);
+          compressor.connect(remoteAudioCtx.destination);
+        } catch (e) {
+          remoteAudioElement.srcObject = stream;
+        }
+
+        setupAudioVisualizer(stream, `user-av-${senderName}`);
+      }
+    }
+
+    function removeRemoteStreamElement(peerId) {
+      delete peerStreams[peerId];
+      removeVideoBox(peerId);
+    }
+
+    function handleTypingInput() {
+      if (!socket) return;
+      socket.emit('typing', { roomId: currentRoom, username: username });
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        socket.emit('stop-typing', { roomId: currentRoom, username: username });
+      }, 2000);
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text || !socket) return;
+
+      socket.emit('stop-typing', { roomId: currentRoom, username: username });
+
+      let channelType = 'Ses Kanalı';
+      let parentData = cachedChannels[currentRoom];
+      if (parentData && parentData.type === 'Metin Kanalı') channelType = 'Metin Kanalı';
+
+      if (text.startsWith('.play ')) {
+        if (channelType === 'Metin Kanalı') {
+          alert("Metin kanallarında müzik çalınamaz!");
+          input.value = "";
+          return;
+        }
+        const query = text.slice(6).trim();
+        socket.emit('play-music-request', { roomId: currentRoom, query: query, username: username, channelType: channelType });
+        input.value = "";
+      } else if (text === '.stop') {
+        socket.emit('stop-music-request', { roomId: currentRoom, username: username });
+        input.value = "";
+      } else {
+        socket.emit('send-message', { roomId: currentRoom, user: username, avatar: userAvatar, message: text, file: null, poll: null });
+        input.value = "";
+      }
+    }
+
+    function votePoll(pollMessageId, optIndex) {
+      socket.emit('vote-poll', { roomId: currentRoom, pollId: pollMessageId, optionIndex: optIndex, username: username });
+    }
+
+    function sendFile(element) {
+      const file = element.files[0];
+      if (!file || !socket) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const fileData = { name: file.name, type: file.type, data: e.target.result };
+        socket.emit('send-message', { roomId: currentRoom, user: username, avatar: userAvatar, message: "", file: fileData, poll: null });
+        element.value = "";
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function handleKeyPress(e) { if (e.key === 'Enter') sendMessage(); }
+
+    function appendSystemMessage(text) {
+      const chatBox = document.getElementById('chatMessages');
+      if (!chatBox) return;
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message-item system-message';
+      msgDiv.innerText = `--- ${text} ---`;
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function formatTime(timestamp) {
+      if (!timestamp) return new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      const msgDate = new Date(timestamp);
+      const now = new Date();
+      const diffDays = Math.floor((now - msgDate) / (1000 * 60 * 60 * 24));
+
+      if (diffDays >= 1) {
+        return msgDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' + msgDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      }
+      return msgDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function appendMessage(sender, avatar, msg, file, poll, timestamp, msgId) {
+      const chatBox = document.getElementById('chatMessages');
+      if (!chatBox) return;
+
+      const msgDiv = document.createElement('div');
+      const uniqueMsgId = msgId || ('msg_' + Math.random().toString(36).substr(2, 9));
+      msgDiv.id = uniqueMsgId;
+      
+      const isMentioned = msg && msg.includes(`@${username}`);
+      msgDiv.className = `message-item ${isMentioned ? 'mentioned' : ''}`;
+      
+      const cleanSender = sender.replace(' (Sen)', '');
+      const avatarHtml = avatar 
+        ? `<img src="${avatar}" class="user-avatar-msg">` 
+        : `<div class="user-avatar-msg" style="display:flex; align-items:center; justify-content:center; font-size:14px; color:#fff;">${cleanSender.charAt(0).toUpperCase()}</div>`;
+
+      const timeStr = formatTime(timestamp);
+
+      let html = avatarHtml + `<div class="message-content">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="author" onclick="showProfilePopover(event, '${cleanSender}', '${avatar || ''}', '')">${sender}</div>
+          <span style="font-size:10px; color:var(--text-muted);">${timeStr}</span>
+        </div>`;
+      
+      if (msg) html += `<div style="margin-top:2px;">${msg}</div>`;
+
+      if (poll) {
+        html += `<div class="poll-box" id="poll-container-${poll.id || uniqueMsgId}">
+          <div class="poll-title">📊 ${poll.question}</div>`;
+        poll.options.forEach((opt, idx) => {
+          html += `<div class="poll-option" onclick="votePoll('${poll.id || uniqueMsgId}', ${idx})">
+            <span>${opt.text}</span>
+            <span style="font-weight:bold; color:var(--accent-color);">${opt.votes} oy</span>
+          </div>`;
+        });
+        html += `</div>`;
+      }
+
+      if (file) {
+        if (file.type.startsWith('image/')) {
+          html += `<img src="${file.data}" class="chat-media-img" onclick="openLightbox('${file.data}', 'image')" title="Büyütmek için tıkla">`;
+        } else if (file.type.startsWith('video/')) {
+          html += `<video src="${file.data}" class="chat-media-video" controls onclick="openLightbox('${file.data}', 'video')" title="Büyütmek için tıkla"></video>`;
+        } else {
+          html += `<a href="${file.data}" download="${file.name}" class="chat-file-link">📄 ${file.name} (İndir)</a>`;
+        }
+      }
+
+      html += `</div>`;
+      msgDiv.innerHTML = html;
+      
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  </script>
+</body>
+</html>
